@@ -33,20 +33,18 @@ To build the image locally for the current architecture:
 
 ## Docker-in-Docker
 
-The Coder agent is the container entrypoint and starts `dockerd` on first
-boot, so Docker is available inside the workspace.
+Workspaces run on the [Sysbox](https://github.com/nestybox/sysbox) runtime,
+which gives each workspace a working Docker daemon without a privileged
+container. `sysbox-runc` must be installed on the Docker host that runs the
+workspaces; see the
+[Sysbox installation guide](https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install.md)
+and Coder's
+[Docker-in-workspaces guide](https://coder.com/docs/admin/templates/extending-templates/docker-in-workspaces#use-sysbox-in-docker-based-templates).
 
-The `Container runtime` parameter selects how that is isolated:
+Without it, workspace builds fail with
+`unknown or invalid runtime name: sysbox-runc`.
 
-- **Default runtime (privileged)** runs the workspace as a privileged
-  container. It works on any Docker host, and is the default.
-- **Sysbox** runs the workspace unprivileged under `sysbox-runc`, which gives
-  stronger isolation but must be
-  [installed on the Docker host](https://coder.com/docs/v2/latest/templates/docker-in-workspaces#use-sysbox-in-docker-based-templates)
-  first.
-
-A privileged container can affect the host it runs on; prefer Sysbox on any
-host shared between users.
+The Coder agent is the container entrypoint and starts `dockerd` on first boot.
 
 ## Usage
 

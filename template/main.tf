@@ -1,5 +1,5 @@
-# Docker-in-Docker workspace.
-# Isolation depends on the selected runtime; see README.md.
+# Docker-in-Docker workspace running on the Sysbox runtime.
+# sysbox-runc must be installed on the Docker host; see README.md.
 
 terraform {
   required_providers {
@@ -38,11 +38,6 @@ locals {
 
   # The image without its tag, so the digest can be appended.
   image_repo = replace(data.coder_parameter.image.value, "/:[^:/]+$/", "")
-
-  # An empty runtime means the host default, which needs privileged mode for
-  # the workspace's own dockerd to run.
-  runtime    = data.coder_parameter.runtime.value != "" ? data.coder_parameter.runtime.value : null
-  privileged = data.coder_parameter.runtime.value != "sysbox-runc"
 }
 
 data "coder_parameter" "image" {
@@ -61,32 +56,6 @@ data "coder_parameter" "repo" {
   type         = "string"
   mutable      = true
   default      = ""
-}
-
-data "coder_parameter" "runtime" {
-  name         = "runtime"
-  display_name = "Container runtime"
-  description  = <<-EOF
-  Runtime used for the workspace container.
-
-  Sysbox gives unprivileged Docker-in-Docker but must be installed on the
-  Docker host. The default runtime falls back to a privileged container.
-  EOF
-  type         = "string"
-  mutable      = false
-  default      = ""
-
-  option {
-    name        = "Default runtime (privileged)"
-    description = "Works on any Docker host."
-    value       = ""
-  }
-
-  option {
-    name        = "Sysbox"
-    description = "Requires sysbox-runc on the Docker host."
-    value       = "sysbox-runc"
-  }
 }
 
 resource "coder_agent" "dev" {
@@ -207,33 +176,6 @@ data "docker_registry_image" "base_image" {
   name = data.coder_parameter.image.value
 }
 
-# The workspace root filesystem is itself overlay, and overlay cannot be
-# stacked, so the inner Docker needs a real filesystem for its storage.
-resource "docker_volume" "docker_lib" {
-  name = "coder-${data.coder_workspace.me.id}-docker"
-
-  lifecycle {
-    ignore_changes = all
-  }
-
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.owner_id"
-    value = data.coder_workspace_owner.me.id
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-  labels {
-    label = "coder.workspace_name_at_creation"
-    value = data.coder_workspace.me.name
-  }
-}
-
 resource "docker_image" "base_image" {
   name          = "${local.image_repo}@${data.docker_registry_image.base_image.sha256_digest}"
   pull_triggers = [data.docker_registry_image.base_image.sha256_digest]
@@ -251,10 +193,8 @@ resource "docker_container" "workspace" {
   entrypoint = ["sh", "-c", replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
   env        = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
 
-  # Sysbox provides Docker-in-Docker unprivileged; otherwise fall back to a
-  # privileged container on the host default runtime.
-  runtime    = local.runtime
-  privileged = local.privileged
+  # Sysbox gives the workspace a working, unprivileged Docker.
+  runtime = "sysbox-runc"
 
   host {
     host = "host.docker.internal"
@@ -264,12 +204,6 @@ resource "docker_container" "workspace" {
   volumes {
     container_path = local.home_dir
     volume_name    = docker_volume.home_volume.name
-    read_only      = false
-  }
-
-  volumes {
-    container_path = "/var/lib/docker"
-    volume_name    = docker_volume.docker_lib.name
     read_only      = false
   }
 
