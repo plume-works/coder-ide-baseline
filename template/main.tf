@@ -45,15 +45,10 @@ locals {
 data "coder_parameter" "image" {
   name         = "image"
   display_name = "Base image"
-  description  = "Base image to use for the workspace."
+  description  = "Base image to use for the workspace. Any image that boots systemd and ships the Coder agent units works."
   type         = "string"
   mutable      = true
   default      = "ghcr.io/plume-works/coder-ide-baseline:latest"
-
-  option {
-    name  = "plume-works/coder-ide-baseline"
-    value = "ghcr.io/plume-works/coder-ide-baseline:latest"
-  }
 }
 
 data "coder_parameter" "repo" {
@@ -113,8 +108,12 @@ resource "coder_agent" "dev" {
       touch ~/.init_done
     fi
 
-    # systemd runs as PID 1 and owns dockerd. Wait for it rather than
-    # starting a second daemon.
+    # Nothing supervises the container, so the agent owns dockerd.
+    if ! docker info >/dev/null 2>&1; then
+      echo "Starting dockerd"
+      sudo -n dockerd >/tmp/dockerd.log 2>&1 &
+    fi
+
     echo "Waiting for Docker to become ready"
     for _ in $(seq 1 60); do
       if docker info >/dev/null 2>&1; then
@@ -123,7 +122,7 @@ resource "coder_agent" "dev" {
       fi
       sleep 2
     done
-    docker info >/dev/null 2>&1 || echo "WARNING: Docker did not become ready"
+    docker info >/dev/null 2>&1 || echo "WARNING: Docker did not become ready; see /tmp/dockerd.log"
 
     mkdir -p ~/.ssh
     chmod 700 ~/.ssh
@@ -211,13 +210,9 @@ resource "docker_container" "workspace" {
   name     = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   hostname = lower(data.coder_workspace.me.name)
 
-  # systemd boots as PID 1; the agent runs as a systemd unit so that
-  # dockerd inside the workspace is supervised.
-  command = ["/sbin/init"]
-  env = [
-    "CODER_AGENT_TOKEN=${coder_agent.dev.token}",
-    "CODER_AGENT_INIT_SCRIPT=${replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")}",
-  ]
+  # The agent is the entrypoint and starts dockerd itself.
+  entrypoint = ["sh", "-c", replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
+  env        = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
 
   # Sysbox provides Docker-in-Docker unprivileged; otherwise fall back to a
   # privileged container on the host default runtime.

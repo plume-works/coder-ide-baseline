@@ -43,9 +43,6 @@ RUN apt-get update && \
     apt-get install --yes git \
     && rm -rf /var/lib/apt/lists/*
 
-# Enables Docker starting with systemd
-RUN systemctl enable docker
-
 # Create a symlink for standalone docker-compose usage
 RUN ln -s /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose
 
@@ -84,13 +81,5 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | b
 COPY bashrc /etc/skel/.bashrc
 COPY --chown=coder:coder bashrc /home/coder/.bashrc
 
-# Sysbox boots this image with systemd as PID 1, which supervises both
-# dockerd and the Coder agent.
-USER root
-COPY coder-agent.service coder-agent-env.service /etc/systemd/system/
-COPY coder-agent-env.sh /usr/local/bin/coder-agent-env.sh
-RUN chmod +x /usr/local/bin/coder-agent-env.sh && \
-    systemctl enable coder-agent-env.service coder-agent.service
-
-STOPSIGNAL SIGRTMIN+3
-CMD ["/sbin/init"]
+# Coder starts the agent as the container entrypoint, running as this user.
+USER coder

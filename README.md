@@ -19,6 +19,12 @@ ghcr.io/plume-works/coder-ide-baseline:latest
 
 Pushes to `main` publish the `latest` tag, and published releases publish a tag named after the release. Pull requests build the image without publishing it. The workspace user inside the image is `coder` (uid 1000), with the home directory at `/home/coder`.
 
+A GitHub Container Registry package is not public when it is first published.
+Unless the Docker host running the workspaces authenticates to `ghcr.io`, set
+the package visibility to public once, under
+`Package settings -> Change visibility`; otherwise the workspace build fails to
+pull the image with `unauthorized`.
+
 To build the image locally for the current architecture:
 
 ```bash
@@ -27,8 +33,8 @@ To build the image locally for the current architecture:
 
 ## Docker-in-Docker
 
-The workspace boots systemd as PID 1, which supervises both `dockerd` and the
-Coder agent, so Docker is available inside the workspace.
+The Coder agent is the container entrypoint and starts `dockerd` on first
+boot, so Docker is available inside the workspace.
 
 The `Container runtime` parameter selects how that is isolated:
 
@@ -46,6 +52,6 @@ host shared between users.
 
 You'll need the Coder CLI on your local machine to create and push the template. You can find the installation instructions [here](https://coder.com/docs/v2/latest/templates#get-the-cli).
 
-Once you have the CLI installed, you can create the template by running the `./template/create.sh` script. This will create a new template in your Coder instance.
-
-If you want to push/update the template, you can run the `./template/push.sh` script.
+Once you have the CLI installed, run `./template/push.sh`. It creates the
+template on the first run and pushes a new version on later runs. Set
+`TEMPLATE_NAME` to use a name other than `docker-in-docker`.
