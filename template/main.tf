@@ -85,12 +85,7 @@ resource "coder_agent" "dev" {
       touch ~/.init_done
     fi
 
-    # Nothing supervises the container, so the agent owns dockerd.
-    if ! docker info >/dev/null 2>&1; then
-      echo "Starting dockerd"
-      sudo -n dockerd >/tmp/dockerd.log 2>&1 &
-    fi
-
+    # systemd owns dockerd through docker.service; wait for it to come up.
     echo "Waiting for Docker to become ready"
     for _ in $(seq 1 60); do
       if docker info >/dev/null 2>&1; then
@@ -99,7 +94,8 @@ resource "coder_agent" "dev" {
       fi
       sleep 2
     done
-    docker info >/dev/null 2>&1 || echo "WARNING: Docker did not become ready; see /tmp/dockerd.log"
+    docker info >/dev/null 2>&1 ||
+      echo "WARNING: Docker did not become ready; check 'systemctl status docker'"
 
     mkdir -p ~/.ssh
     chmod 700 ~/.ssh
@@ -223,9 +219,21 @@ resource "docker_container" "workspace" {
   name     = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   hostname = lower(data.coder_workspace.me.name)
 
-  # The agent is the entrypoint and starts dockerd itself.
-  entrypoint = ["sh", "-c", replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
-  env        = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
+  # systemd is PID 1 so docker.service supervises dockerd. The agent cannot be
+  # PID 1 as well, so it is backgrounded as `coder` once systemd is up, and
+  # init takes over the container.
+  command = ["bash", "-c", <<-EOT
+    sudo -u ${local.username} --preserve-env=CODER_AGENT_TOKEN /bin/bash -- <<-'AGENT' &
+    while [[ ! $(systemctl is-system-running) =~ ^(running|degraded)$ ]]; do
+      echo "Waiting for systemd to start... $(systemctl is-system-running)"
+      sleep 2
+    done
+    ${replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")}
+    AGENT
+    exec /sbin/init
+  EOT
+  ]
+  env = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
 
   # Sysbox gives the workspace a working, unprivileged Docker.
   runtime = "sysbox-runc"

@@ -44,7 +44,8 @@ and Coder's
 Without it, workspace builds fail with
 `unknown or invalid runtime name: sysbox-runc`.
 
-The Coder agent is the container entrypoint and starts `dockerd` on first boot.
+systemd runs as PID 1 in the workspace and `docker.service` supervises
+`dockerd`; the Coder agent starts alongside it as the `coder` user.
 
 ## Dev Containers
 

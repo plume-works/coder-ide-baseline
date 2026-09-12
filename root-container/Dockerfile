@@ -43,6 +43,9 @@ RUN apt-get update && \
     apt-get install --yes git \
     && rm -rf /var/lib/apt/lists/*
 
+# Enables Docker starting with systemd
+RUN systemctl enable docker
+
 # Create a symlink for standalone docker-compose usage
 RUN ln -s /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose
 
@@ -90,5 +93,6 @@ RUN pipx ensurepath # adds user's bin directory to PATH
 COPY bashrc /etc/skel/.bashrc
 COPY --chown=coder:coder bashrc /home/coder/.bashrc
 
-# Coder starts the agent as the container entrypoint, running as this user.
-USER coder
+# systemd runs as PID 1 and must be root; the template drops to `coder` for
+# the agent.
+USER root
