@@ -219,9 +219,9 @@ resource "docker_container" "workspace" {
   name     = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   hostname = lower(data.coder_workspace.me.name)
 
-  # systemd is PID 1 so docker.service supervises dockerd. The agent cannot be
-  # PID 1 as well, so it is backgrounded as `coder` once systemd is up, and
-  # init takes over the container.
+  # systemd is PID 1 so docker.service supervises dockerd; the agent is
+  # backgrounded once systemd is up, then init takes over. It must stay
+  # `coder`: devcontainer up maps the inner user to the invoking uid.
   command = ["bash", "-c", <<-EOT
     sudo -u ${local.username} --preserve-env=CODER_AGENT_TOKEN /bin/bash -- <<-'AGENT' &
     while [[ ! $(systemctl is-system-running) =~ ^(running|degraded)$ ]]; do
