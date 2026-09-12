@@ -46,6 +46,19 @@ Without it, workspace builds fail with
 
 The Coder agent is the container entrypoint and starts `dockerd` on first boot.
 
+## Dev Containers
+
+Setting the `repo` parameter clones that repository into the home directory and
+registers it as a Dev Container. The agent runs `devcontainer up` on it and
+Coder exposes the running container as a sub-agent, so an editor attaches to the
+Dev Container itself rather than to the workspace around it:
+
+```bash
+coder ssh <workspace>.<repo-name>
+```
+
+Leaving `repo` empty gives a plain workspace with no Dev Container.
+
 ## Usage
 
 You'll need the Coder CLI on your local machine to create and push the template. You can find the installation instructions [here](https://coder.com/docs/v2/latest/templates#get-the-cli).

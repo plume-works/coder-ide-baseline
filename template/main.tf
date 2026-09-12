@@ -38,6 +38,10 @@ locals {
 
   # The image without its tag, so the digest can be appended.
   image_repo = replace(data.coder_parameter.image.value, "/:[^:/]+$/", "")
+
+  # Where the clone lands; the startup script and coder_devcontainer must agree.
+  repo_dir  = replace(replace(data.coder_parameter.repo.value, "/^.*[\\/:]/", ""), "/\\.git$/", "")
+  repo_path = "${local.home_dir}/${local.repo_dir}"
 }
 
 data "coder_parameter" "image" {
@@ -101,12 +105,9 @@ resource "coder_agent" "dev" {
     ssh-keyscan -t ed25519 github.com gitlab.com >>~/.ssh/known_hosts 2>/dev/null || true
 
     REPO_URL="${data.coder_parameter.repo.value}"
-    if [ -n "$REPO_URL" ]; then
-      repo_dir=$(basename "$REPO_URL" .git)
-      if [ ! -d "$repo_dir" ]; then
-        echo "Cloning $REPO_URL"
-        git clone "$REPO_URL" || echo "WARNING: clone failed"
-      fi
+    if [ -n "$REPO_URL" ] && [ ! -d "${local.repo_path}" ]; then
+      echo "Cloning $REPO_URL"
+      git clone "$REPO_URL" "${local.repo_path}" || echo "WARNING: clone failed"
     fi
   EOT
 
@@ -142,6 +143,13 @@ module "code-server" {
   agent_id = coder_agent.dev.id
   folder   = local.home_dir
   order    = 1
+}
+
+# The agent autostarts this Dev Container and exposes it as its own sub-agent.
+resource "coder_devcontainer" "repo" {
+  count            = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
+  agent_id         = coder_agent.dev.id
+  workspace_folder = local.repo_path
 }
 
 resource "docker_volume" "home_volume" {
