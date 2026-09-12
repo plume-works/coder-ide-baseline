@@ -43,7 +43,7 @@ locals {
 data "coder_parameter" "image" {
   name         = "image"
   display_name = "Base image"
-  description  = "Base image to use for the workspace. Any image that boots systemd and ships the Coder agent units works."
+  description  = "Base image to use for the workspace. Any image that ships the tooling and a passwordless-sudo coder user works."
   type         = "string"
   mutable      = true
   default      = "ghcr.io/plume-works/coder-ide-baseline:latest"
@@ -170,6 +170,31 @@ resource "docker_volume" "home_volume" {
   }
 }
 
+resource "docker_volume" "docker_lib" {
+  name = "coder-${data.coder_workspace.me.id}-docker"
+
+  lifecycle {
+    ignore_changes = all
+  }
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+  labels {
+    label = "coder.workspace_name_at_creation"
+    value = data.coder_workspace.me.name
+  }
+}
+
 # Resolve the tag to a digest and run that digest. Naming the tag alone leaves
 # a host that already cached the tag on a stale image indefinitely.
 data "docker_registry_image" "base_image" {
@@ -204,6 +229,13 @@ resource "docker_container" "workspace" {
   volumes {
     container_path = local.home_dir
     volume_name    = docker_volume.home_volume.name
+    read_only      = false
+  }
+
+  # Without this the inner image cache is discarded on every restart.
+  volumes {
+    container_path = "/var/lib/docker"
+    volume_name    = docker_volume.docker_lib.name
     read_only      = false
   }
 
