@@ -36,6 +36,9 @@ locals {
   username = "coder"
   home_dir = "/home/coder"
 
+  # The image without its tag, so the digest can be appended.
+  image_repo = replace(data.coder_parameter.image.value, "/:[^:/]+$/", "")
+
   # An empty runtime means the host default, which needs privileged mode for
   # the workspace's own dockerd to run.
   runtime    = data.coder_parameter.runtime.value != "" ? data.coder_parameter.runtime.value : null
@@ -198,9 +201,43 @@ resource "docker_volume" "home_volume" {
   }
 }
 
+# Resolve the tag to a digest and run that digest. Naming the tag alone leaves
+# a host that already cached the tag on a stale image indefinitely.
+data "docker_registry_image" "base_image" {
+  name = data.coder_parameter.image.value
+}
+
+# The workspace root filesystem is itself overlay, and overlay cannot be
+# stacked, so the inner Docker needs a real filesystem for its storage.
+resource "docker_volume" "docker_lib" {
+  name = "coder-${data.coder_workspace.me.id}-docker"
+
+  lifecycle {
+    ignore_changes = all
+  }
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+  labels {
+    label = "coder.workspace_name_at_creation"
+    value = data.coder_workspace.me.name
+  }
+}
+
 resource "docker_image" "base_image" {
-  name         = data.coder_parameter.image.value
-  keep_locally = true
+  name          = "${local.image_repo}@${data.docker_registry_image.base_image.sha256_digest}"
+  pull_triggers = [data.docker_registry_image.base_image.sha256_digest]
+  keep_locally  = true
 }
 
 resource "docker_container" "workspace" {
@@ -227,6 +264,12 @@ resource "docker_container" "workspace" {
   volumes {
     container_path = local.home_dir
     volume_name    = docker_volume.home_volume.name
+    read_only      = false
+  }
+
+  volumes {
+    container_path = "/var/lib/docker"
+    volume_name    = docker_volume.docker_lib.name
     read_only      = false
   }
 
