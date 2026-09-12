@@ -1,6 +1,6 @@
 # Coder Workspace Template for running Devcontainers
 
-This repository contains all the required files to run a [Devcontainer](https://code.visualstudio.com/docs/remote/containers) in a [Coder](https://github.com/coder/coder) workspace. The devcontainer image supports both ARM64 and AMD64 architectures.
+This repository contains all the required files to run a [Devcontainer](https://code.visualstudio.com/docs/devcontainers/containers) in a [Coder](https://github.com/coder/coder) workspace. The devcontainer image supports both ARM64 and AMD64 architectures.
 
 ## Structure
 
@@ -61,7 +61,7 @@ Leaving `repo` empty gives a plain workspace with no Dev Container.
 
 ## Usage
 
-You'll need the Coder CLI on your local machine to create and push the template. You can find the installation instructions [here](https://coder.com/docs/v2/latest/templates#get-the-cli).
+You'll need the Coder CLI on your local machine to create and push the template. You can find the installation instructions [here](https://coder.com/docs/install/cli).
 
 Once you have the CLI installed, run `./template/push.sh`. It creates the
 template on the first run and pushes a new version on later runs. Set
