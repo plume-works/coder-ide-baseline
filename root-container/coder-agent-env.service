@@ -1,0 +1,14 @@
+[Unit]
+Description=Export container environment for the Coder agent
+Before=coder-agent.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# systemd does not inherit the container environment, so PID 1's copy is
+# materialised where coder-agent.service can read it.
+ExecStart=/usr/local/bin/coder-agent-env.sh
+
+[Install]
+WantedBy=multi-user.target

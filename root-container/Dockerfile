@@ -78,3 +78,19 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | b
     nvm cache clear && \
     # devcontainers cli for prebuilding devcontainers
     npm install -g @devcontainers/cli
+
+# The home directory is a volume mount at runtime, which masks anything
+# baked into it; /etc/skel seeds it on first start instead.
+COPY bashrc /etc/skel/.bashrc
+COPY --chown=coder:coder bashrc /home/coder/.bashrc
+
+# Sysbox boots this image with systemd as PID 1, which supervises both
+# dockerd and the Coder agent.
+USER root
+COPY coder-agent.service coder-agent-env.service /etc/systemd/system/
+COPY coder-agent-env.sh /usr/local/bin/coder-agent-env.sh
+RUN chmod +x /usr/local/bin/coder-agent-env.sh && \
+    systemctl enable coder-agent-env.service coder-agent.service
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]
