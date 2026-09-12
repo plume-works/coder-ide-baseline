@@ -64,17 +64,26 @@ RUN userdel -r ubuntu && \
     --user-group && \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
-USER coder
-RUN pipx ensurepath # adds user's bin directory to PATH
-
-# Install nvm and Node.js LTS
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
-    . ~/.nvm/nvm.sh && \
+# Node lives outside /home/coder because that path is a volume mount at
+# runtime, which would otherwise mask it. /opt/node/bin is a stable symlink so
+# PATH does not name a Node version.
+ENV NVM_DIR=/opt/nvm
+RUN mkdir -p "$NVM_DIR" && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+    . "$NVM_DIR/nvm.sh" && \
     nvm install --lts && \
     nvm alias default lts/* && \
     nvm cache clear && \
     # devcontainers cli for prebuilding devcontainers
-    npm install -g @devcontainers/cli
+    npm install -g @devcontainers/cli && \
+    ln -sfn "$(dirname "$(command -v node)")" /opt/node-bin && \
+    chown -R coder:coder "$NVM_DIR"
+
+# On PATH for non-interactive shells too, which is how the agent runs scripts.
+ENV PATH=/opt/node-bin:$PATH
+
+USER coder
+RUN pipx ensurepath # adds user's bin directory to PATH
 
 # The home directory is a volume mount at runtime, which masks anything
 # baked into it; /etc/skel seeds it on first start instead.
