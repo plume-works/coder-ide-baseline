@@ -36,8 +36,9 @@ locals {
   username = "coder"
   home_dir = "/home/coder"
 
-  # The image without its tag, so the digest can be appended.
-  image_repo = replace(data.coder_parameter.image.value, "/:[^:/]+$/", "")
+  # The image without any tag or digest, so the resolved digest can be
+  # appended. The parameter is free-form, so it may already carry either.
+  image_repo = replace(replace(data.coder_parameter.image.value, "/@[^@]+$/", ""), "/:[^:/]+$/", "")
 
   # Where the clone lands; the startup script and coder_devcontainer must agree.
   repo_dir  = replace(replace(data.coder_parameter.repo.value, "/^.*[\\/:]/", ""), "/\\.git$/", "")
