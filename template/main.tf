@@ -1,5 +1,5 @@
-# Docker-in-Docker workspace running on the Sysbox runtime.
-# Sysbox must be installed on the Docker host; see README.md.
+# Docker-in-Docker workspace.
+# Isolation depends on the selected runtime; see README.md.
 
 terraform {
   required_providers {
@@ -35,6 +35,11 @@ locals {
   # The image bakes this user in; the home volume and apps must agree with it.
   username = "coder"
   home_dir = "/home/coder"
+
+  # An empty runtime means the host default, which needs privileged mode for
+  # the workspace's own dockerd to run.
+  runtime    = data.coder_parameter.runtime.value != "" ? data.coder_parameter.runtime.value : null
+  privileged = data.coder_parameter.runtime.value != "sysbox-runc"
 }
 
 data "coder_parameter" "image" {
@@ -60,6 +65,32 @@ data "coder_parameter" "repo" {
   default      = ""
 }
 
+data "coder_parameter" "runtime" {
+  name         = "runtime"
+  display_name = "Container runtime"
+  description  = <<-EOF
+  Runtime used for the workspace container.
+
+  Sysbox gives unprivileged Docker-in-Docker but must be installed on the
+  Docker host. The default runtime falls back to a privileged container.
+  EOF
+  type         = "string"
+  mutable      = false
+  default      = ""
+
+  option {
+    name        = "Default runtime (privileged)"
+    description = "Works on any Docker host."
+    value       = ""
+  }
+
+  option {
+    name        = "Sysbox"
+    description = "Requires sysbox-runc on the Docker host."
+    value       = "sysbox-runc"
+  }
+}
+
 resource "coder_agent" "dev" {
   arch = data.coder_provisioner.me.arch
   os   = "linux"
@@ -82,8 +113,8 @@ resource "coder_agent" "dev" {
       touch ~/.init_done
     fi
 
-    # Sysbox runs systemd as PID 1, which owns dockerd. Wait for it rather
-    # than starting a second daemon.
+    # systemd runs as PID 1 and owns dockerd. Wait for it rather than
+    # starting a second daemon.
     echo "Waiting for Docker to become ready"
     for _ in $(seq 1 60); do
       if docker info >/dev/null 2>&1; then
@@ -180,7 +211,7 @@ resource "docker_container" "workspace" {
   name     = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   hostname = lower(data.coder_workspace.me.name)
 
-  # Sysbox boots systemd as PID 1; the agent runs as a systemd unit so that
+  # systemd boots as PID 1; the agent runs as a systemd unit so that
   # dockerd inside the workspace is supervised.
   command = ["/sbin/init"]
   env = [
@@ -188,8 +219,10 @@ resource "docker_container" "workspace" {
     "CODER_AGENT_INIT_SCRIPT=${replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")}",
   ]
 
-  # Required for Docker-in-Docker without privileged mode.
-  runtime = "sysbox-runc"
+  # Sysbox provides Docker-in-Docker unprivileged; otherwise fall back to a
+  # privileged container on the host default runtime.
+  runtime    = local.runtime
+  privileged = local.privileged
 
   host {
     host = "host.docker.internal"

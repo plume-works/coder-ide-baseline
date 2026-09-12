@@ -1,6 +1,6 @@
 # Coder Workspace Template for running Devcontainers
 
-This repository contains all the required files to run a [Devcontainer](https://code.visualstudio.com/docs/remote/containers) in a [Coder](https://github.com/coder/coder) workspace. The devcontainer image supports both ARM64 and AMD64 architectures. A guide on how to run Docker in Docker using Sysbox can be found [here](https://coder.com/docs/v2/latest/templates/docker-in-workspaces#use-sysbox-in-docker-based-templates).
+This repository contains all the required files to run a [Devcontainer](https://code.visualstudio.com/docs/remote/containers) in a [Coder](https://github.com/coder/coder) workspace. The devcontainer image supports both ARM64 and AMD64 architectures.
 
 ## Structure
 
@@ -25,9 +25,26 @@ To build the image locally for the current architecture:
 ./root-container/build.sh
 ```
 
+## Docker-in-Docker
+
+The workspace boots systemd as PID 1, which supervises both `dockerd` and the
+Coder agent, so Docker is available inside the workspace.
+
+The `Container runtime` parameter selects how that is isolated:
+
+- **Default runtime (privileged)** runs the workspace as a privileged
+  container. It works on any Docker host, and is the default.
+- **Sysbox** runs the workspace unprivileged under `sysbox-runc`, which gives
+  stronger isolation but must be
+  [installed on the Docker host](https://coder.com/docs/v2/latest/templates/docker-in-workspaces#use-sysbox-in-docker-based-templates)
+  first.
+
+A privileged container can affect the host it runs on; prefer Sysbox on any
+host shared between users.
+
 ## Usage
 
-After setting up Coder and Sysbox, you'll need to install the Coder CLI on your local machine to create and push the template. You can find the installation instructions [here](https://coder.com/docs/v2/latest/templates#get-the-cli).
+You'll need the Coder CLI on your local machine to create and push the template. You can find the installation instructions [here](https://coder.com/docs/v2/latest/templates#get-the-cli).
 
 Once you have the CLI installed, you can create the template by running the `./template/create.sh` script. This will create a new template in your Coder instance.
 
