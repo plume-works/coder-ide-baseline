@@ -57,17 +57,17 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-# Remove the `ubuntu` user and add a user `chunk` so that you're not developing as the `root` user
+# Remove the `ubuntu` user and add a user `coder` so that you are not developing as the `root` user
 RUN userdel -r ubuntu && \
-    useradd chunk \
+    useradd coder \
     --create-home \
     --shell=/bin/bash \
     --groups=docker \
     --uid=1000 \
     --user-group && \
-    echo "chunk ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
+    echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
-USER chunk
+USER coder
 RUN pipx ensurepath # adds user's bin directory to PATH
 
 # Install nvm and Node.js LTS

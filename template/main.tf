@@ -24,57 +24,57 @@ data "coder_workspace" "me" {
 }
 
 data "coder_parameter" "image" {
-  name = "Base image"
-  type = "string"
+  name        = "Base image"
+  type        = "string"
   description = <<-EOF
   Base image to use for the workspace.
 
   EOF
-  mutable = true
+  mutable     = true
   # Generate a list of options from the local.images map
   option {
-    name   = "lordchunk/coder-ide-baseline"
-    value = "ghcr.io/lordchunk/coder-ide-baseline:latest" # This value is modified by root-container.yml Step: Write hash to main.tf
+    name  = "plume-works/coder-ide-baseline"
+    value = "ghcr.io/plume-works/coder-ide-baseline:latest"
   }
 }
 
 
-data  "coder_parameter" "repo" {
-  name = "Repository SSH URL"
-  type = "string"
+data "coder_parameter" "repo" {
+  name        = "Repository SSH URL"
+  type        = "string"
   description = <<-EOF
   Code repository to clone
 
-  e.g. git@github.com:LordChunk/7beek-admin-dashboard.git
+  e.g. git@github.com:plume-works/coder-ide-baseline.git
 
   EOF
 }
 
 data "coder_parameter" "git_email" {
-  name = "Git email address"
-  type = "string"
+  name        = "Git email address"
+  type        = "string"
   description = <<-EOF
   Git email address used for commits.
 
   EOF
-  default = "LordChunk@users.noreply.github.com"
+  default     = "noreply@plume.works"
 }
 
 data "coder_parameter" "git_name" {
-  name = "Git name"
-  type = "string"
-  default = "LordChunk"
+  name    = "Git name"
+  type    = "string"
+  default = "Plume Works"
 }
 
 resource "docker_image" "base_image" {
-  name = data.coder_parameter.image.value
+  name         = data.coder_parameter.image.value
   keep_locally = true
 }
 
 resource "coder_agent" "dev" {
   arch           = "arm64"
   os             = "linux"
-  startup_script  = <<EOT
+  startup_script = <<EOT
     #!/bin/bash
 
     # Start Docker
@@ -120,19 +120,19 @@ resource "coder_agent" "dev" {
 }
 
 resource "coder_app" "code-server" {
-  agent_id = coder_agent.dev.id
-  slug          = "code-server"
-  display_name  = "VS Code"
-  url      = "http://localhost:13337/?folder=/home/chunk"
-  icon     = "/icon/code.svg"
-  subdomain = false
-  share     = "owner"
+  agent_id     = coder_agent.dev.id
+  slug         = "code-server"
+  display_name = "VS Code"
+  url          = "http://localhost:13337/?folder=/home/coder"
+  icon         = "/icon/code.svg"
+  subdomain    = false
+  share        = "owner"
 
   healthcheck {
     url       = "http://localhost:13337/healthz"
     interval  = 5
     threshold = 15
-  }  
+  }
 }
 
 resource "docker_container" "workspace" {
@@ -156,12 +156,12 @@ resource "docker_container" "workspace" {
   ]
   # required for sysbox runc to be used
   runtime = "sysbox-runc"
-  env        = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
+  env     = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
   volumes {
-    container_path = "/home/chunk/"
+    container_path = "/home/coder/"
     volume_name    = docker_volume.coder_volume.name
     read_only      = false
-  }  
+  }
   host {
     host = "host.docker.internal"
     ip   = "host-gateway"
