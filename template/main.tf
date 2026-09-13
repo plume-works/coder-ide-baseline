@@ -203,9 +203,11 @@ resource "coder_script" "second_repo" {
     set -euo pipefail
 
     LOG=/tmp/coder-second-repo.log
-    echo "Waiting for the Dev Container in the background; progress in $LOG"
+    WORKER=/tmp/coder-second-repo.sh
 
-    setsid bash -s "${local.repo_path}" "${local.second_repo_path}" "${data.coder_parameter.second_repo.value}" >"$LOG" 2>&1 <<'WORKER' &
+    # The worker runs from a file with stdin closed: fed on stdin instead, the
+    # `devcontainer exec` below would consume the rest of it as its own input.
+    cat >"$WORKER" <<'SCRIPT'
     folder=$1
     target=$2
     url=$3
@@ -227,7 +229,10 @@ resource "coder_script" "second_repo" {
         git clone "$2" "$1"
       fi
     ' _ "$target" "$url"
-    WORKER
+    SCRIPT
+
+    echo "Waiting for the Dev Container in the background; progress in $LOG"
+    setsid bash "$WORKER" "${local.repo_path}" "${local.second_repo_path}" "${data.coder_parameter.second_repo.value}" >"$LOG" 2>&1 </dev/null &
   EOT
 }
 
