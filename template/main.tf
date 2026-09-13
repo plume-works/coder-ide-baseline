@@ -322,11 +322,15 @@ resource "docker_container" "workspace" {
     content = local.agent_unit
   }
 
-  # `systemctl enable` cannot run before systemd does, and a plain file in the
-  # wants directory enables the unit exactly as the symlink it would create.
+  # `systemctl enable` cannot run before systemd does, and systemd ignores a
+  # plain file dropped in a wants directory, where it expects a symlink. A
+  # target drop-in pulls the unit in without one.
   upload {
-    file    = "/etc/systemd/system/multi-user.target.wants/coder-agent.service"
-    content = local.agent_unit
+    file    = "/etc/systemd/system/multi-user.target.d/10-coder-agent.conf"
+    content = <<-EOT
+      [Unit]
+      Wants=coder-agent.service
+    EOT
   }
 
   # systemd as PID 1 reads SIGTERM as daemon-reexec, so a stop would end in
