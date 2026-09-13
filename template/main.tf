@@ -187,9 +187,11 @@ resource "coder_devcontainer" "repo" {
   workspace_folder = local.repo_path
 }
 
-# The agent starts the Dev Container after the startup script, so the second
-# clone waits for it here. `devcontainer exec` only attaches to a container that
-# already exists, so polling it cannot race the agent's own `devcontainer up`.
+# The agent starts declared Dev Containers only once its start scripts have all
+# finished, so this waits in a detached process: waiting in the foreground would
+# hold back the very container it is waiting for. `devcontainer exec` only
+# attaches to a container that already exists, so polling it cannot race the
+# agent's own `devcontainer up`.
 resource "coder_script" "second_repo" {
   count              = local.second_repo_enabled ? data.coder_workspace.me.start_count : 0
   agent_id           = coder_agent.dev.id
@@ -200,28 +202,32 @@ resource "coder_script" "second_repo" {
   script             = <<-EOT
     set -euo pipefail
 
-    FOLDER="${local.repo_path}"
-    TARGET="${local.second_repo_path}"
-    URL="${data.coder_parameter.second_repo.value}"
+    LOG=/tmp/coder-second-repo.log
+    echo "Waiting for the Dev Container in the background; progress in $LOG"
 
-    echo "Waiting for the Dev Container at $FOLDER"
-    DEADLINE=$(( $(date +%s) + 1200 ))
-    until devcontainer exec --workspace-folder "$FOLDER" -- true >/dev/null 2>&1; do
-      if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-        echo "WARNING: the Dev Container did not come up; $TARGET was not cloned"
+    setsid bash -s "${local.repo_path}" "${local.second_repo_path}" "${data.coder_parameter.second_repo.value}" >"$LOG" 2>&1 <<'WORKER' &
+    folder=$1
+    target=$2
+    url=$3
+
+    deadline=$(( $(date +%s) + 1200 ))
+    until devcontainer exec --workspace-folder "$folder" -- true >/dev/null 2>&1; do
+      if [ "$(date +%s)" -ge "$deadline" ]; then
+        echo "WARNING: the Dev Container did not come up; $target was not cloned"
         exit 0
       fi
       sleep 5
     done
 
-    echo "Cloning $URL into $TARGET"
-    devcontainer exec --workspace-folder "$FOLDER" -- bash -c '
+    echo "Cloning $url into $target"
+    devcontainer exec --workspace-folder "$folder" -- bash -c '
       if [ -e "$1" ]; then
         echo "$1 already exists; leaving it alone"
       else
         git clone "$2" "$1"
       fi
-    ' _ "$TARGET" "$URL"
+    ' _ "$target" "$url"
+    WORKER
   EOT
 }
 
