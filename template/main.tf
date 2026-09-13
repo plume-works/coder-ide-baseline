@@ -51,12 +51,33 @@ locals {
 
   # Without the first repository there is no Dev Container to clone into.
   second_repo_enabled = data.coder_parameter.second_repo.value != "" && data.coder_parameter.repo.value != ""
+
+  # systemd hands units its own PATH rather than the image's, so the directory
+  # the image puts Node and the devcontainer CLI on has to be named again here.
+  agent_unit = <<-EOT
+    [Unit]
+    Description=Coder Agent
+    Wants=network-online.target
+    After=network-online.target
+
+    [Service]
+    Type=exec
+    User=${local.username}
+    Environment=PATH=/opt/node-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    EnvironmentFile=/etc/coder/agent.env
+    ExecStart=/bin/bash /etc/coder/agent-init.sh
+    Restart=on-failure
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+  EOT
 }
 
 data "coder_parameter" "image" {
   name         = "image"
   display_name = "Base image"
-  description  = "Base image to use for the workspace. Any image that ships the tooling and a passwordless-sudo coder user works."
+  description  = "Base image to use for the workspace. It must run as root and provide systemd at /sbin/init, plus the tooling and a passwordless-sudo coder user."
   type         = "string"
   mutable      = true
   default      = "ghcr.io/plume-works/coder-ide-baseline:latest"
@@ -274,21 +295,39 @@ resource "docker_container" "workspace" {
   name     = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   hostname = lower(data.coder_workspace.me.name)
 
-  # systemd is PID 1 so docker.service supervises dockerd; the agent is
-  # backgrounded once systemd is up, then init takes over. It must stay
-  # `coder`: devcontainer up maps the inner user to the invoking uid.
-  command = ["bash", "-c", <<-EOT
-    sudo -u ${local.username} --preserve-env=CODER_AGENT_TOKEN /bin/bash -- <<-'AGENT' &
-    while [[ ! $(systemctl is-system-running) =~ ^(running|degraded)$ ]]; do
-      echo "Waiting for systemd to start... $(systemctl is-system-running)"
-      sleep 2
-    done
-    ${replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")}
-    AGENT
-    exec /sbin/init
-  EOT
-  ]
-  env = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
+  # Sysbox sets a container up for systemd only when its first argument is
+  # exactly `/sbin/init`, so systemd cannot be reached through a wrapper shell.
+  # The agent is a unit instead; docker.service supervises dockerd.
+  entrypoint = ["/sbin/init"]
+  command    = []
+
+  # The agent must run as `coder`: devcontainer up maps the inner user to the
+  # invoking uid.
+  # Root-owned and not executable: systemd names the interpreter, so `coder`
+  # needs only to read what systemd runs as it.
+  upload {
+    file    = "/etc/coder/agent-init.sh"
+    content = <<-EOT
+      ${replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")}
+    EOT
+  }
+
+  upload {
+    file    = "/etc/coder/agent.env"
+    content = "CODER_AGENT_TOKEN=${coder_agent.dev.token}\n"
+  }
+
+  upload {
+    file    = "/etc/systemd/system/coder-agent.service"
+    content = local.agent_unit
+  }
+
+  # `systemctl enable` cannot run before systemd does, and a plain file in the
+  # wants directory enables the unit exactly as the symlink it would create.
+  upload {
+    file    = "/etc/systemd/system/multi-user.target.wants/coder-agent.service"
+    content = local.agent_unit
+  }
 
   # systemd as PID 1 reads SIGTERM as daemon-reexec, so a stop would end in
   # SIGKILL with dockerd still writing to /var/lib/docker. SIGRTMIN+3 is its
