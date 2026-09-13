@@ -43,6 +43,14 @@ locals {
   # Where the clone lands; the startup script and coder_devcontainer must agree.
   repo_dir  = replace(replace(data.coder_parameter.repo.value, "/^.*[\\/:]/", ""), "/\\.git$/", "")
   repo_path = "${local.home_dir}/${local.repo_dir}"
+
+  # The second clone is a sibling of the first inside the Dev Container, which
+  # mounts the first at /workspaces/<name>.
+  second_repo_dir  = replace(replace(data.coder_parameter.second_repo.value, "/^.*[\\/:]/", ""), "/\\.git$/", "")
+  second_repo_path = "/workspaces/${local.second_repo_dir}"
+
+  # Without the first repository there is no Dev Container to clone into.
+  second_repo_enabled = data.coder_parameter.second_repo.value != "" && data.coder_parameter.repo.value != ""
 }
 
 data "coder_parameter" "image" {
@@ -57,7 +65,16 @@ data "coder_parameter" "image" {
 data "coder_parameter" "repo" {
   name         = "repo"
   display_name = "Repository URL"
-  description  = "Optional repository to clone on first start, e.g. git@github.com:plume-works/coder-ide-baseline.git"
+  description  = "Repository to clone on first start and bring up as the workspace's Dev Container. Leave empty for a plain workspace with no Dev Container."
+  type         = "string"
+  mutable      = true
+  default      = "https://github.com/plume-works/agent-devcontainer.git"
+}
+
+data "coder_parameter" "second_repo" {
+  name         = "second_repo"
+  display_name = "Second repository URL"
+  description  = "Optional second repository, cloned inside the Dev Container at /workspaces/<name> as a sibling of the first. Ignored when Repository URL is empty."
   type         = "string"
   mutable      = true
   default      = ""
@@ -147,6 +164,44 @@ resource "coder_devcontainer" "repo" {
   count            = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
   agent_id         = coder_agent.dev.id
   workspace_folder = local.repo_path
+}
+
+# The agent starts the Dev Container after the startup script, so the second
+# clone waits for it here. `devcontainer exec` only attaches to a container that
+# already exists, so polling it cannot race the agent's own `devcontainer up`.
+resource "coder_script" "second_repo" {
+  count              = local.second_repo_enabled ? data.coder_workspace.me.start_count : 0
+  agent_id           = coder_agent.dev.id
+  display_name       = "Clone second repository"
+  icon               = "/icon/git.svg"
+  run_on_start       = true
+  start_blocks_login = false
+  script             = <<-EOT
+    set -euo pipefail
+
+    FOLDER="${local.repo_path}"
+    TARGET="${local.second_repo_path}"
+    URL="${data.coder_parameter.second_repo.value}"
+
+    echo "Waiting for the Dev Container at $FOLDER"
+    DEADLINE=$(( $(date +%s) + 1200 ))
+    until devcontainer exec --workspace-folder "$FOLDER" -- true >/dev/null 2>&1; do
+      if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+        echo "WARNING: the Dev Container did not come up; $TARGET was not cloned"
+        exit 0
+      fi
+      sleep 5
+    done
+
+    echo "Cloning $URL into $TARGET"
+    devcontainer exec --workspace-folder "$FOLDER" -- bash -c '
+      if [ -e "$1" ]; then
+        echo "$1 already exists; leaving it alone"
+      else
+        git clone "$2" "$1"
+      fi
+    ' _ "$TARGET" "$URL"
+  EOT
 }
 
 resource "docker_volume" "home_volume" {

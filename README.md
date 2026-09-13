@@ -49,16 +49,24 @@ systemd runs as PID 1 in the workspace and `docker.service` supervises
 
 ## Dev Containers
 
-Setting the `repo` parameter clones that repository into the home directory and
-registers it as a Dev Container. The agent runs `devcontainer up` on it and
-Coder exposes the running container as a sub-agent, so an editor attaches to the
-Dev Container itself rather than to the workspace around it:
+The `repo` parameter clones that repository into the home directory and
+registers it as a Dev Container, defaulting to `agent-devcontainer`. The agent
+runs `devcontainer up` on it and Coder exposes the running container as a
+sub-agent, so an editor attaches to the Dev Container itself rather than to the
+workspace around it:
 
 ```bash
 coder ssh <workspace>.<repo-name>
 ```
 
-Leaving `repo` empty gives a plain workspace with no Dev Container.
+Clearing `repo` gives a plain workspace with no Dev Container.
+
+`second_repo` clones a second repository *inside* that Dev Container, at
+`/workspaces/<name>` alongside the first, once the agent has brought it up. It
+is empty by default and ignored when `repo` is empty, since there is then no
+Dev Container to clone into. That path is in the Dev Container's own filesystem
+rather than on the home volume, so the second clone is recreated whenever the
+Dev Container is rebuilt.
 
 ## Usage
 
