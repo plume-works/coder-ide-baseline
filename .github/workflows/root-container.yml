@@ -43,7 +43,7 @@ jobs:
       - name: Set tag to release name if release event
         if: github.event_name == 'release'
         shell: bash
-        run: echo "TAG_NAME=${GITHUB_REF##*/}" >> "$GITHUB_ENV"
+        run: echo "TAG_NAME=$(echo "${GITHUB_REF#refs/tags/}" | tr / -)" >> "$GITHUB_ENV"
 
       ## Configure, build and push docker image
       - name: Set up Docker Buildx
