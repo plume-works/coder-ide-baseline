@@ -235,6 +235,12 @@ resource "docker_container" "workspace" {
   ]
   env = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
 
+  # systemd as PID 1 reads SIGTERM as daemon-reexec, so a stop would end in
+  # SIGKILL with dockerd still writing to /var/lib/docker. SIGRTMIN+3 is its
+  # shutdown signal, and the grace period is what gives the stop time to run.
+  stop_signal           = "SIGRTMIN+3"
+  destroy_grace_seconds = 30
+
   # Sysbox gives the workspace a working, unprivileged Docker.
   runtime = "sysbox-runc"
 
