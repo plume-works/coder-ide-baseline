@@ -140,9 +140,19 @@ resource "coder_agent" "dev" {
     ssh-keyscan -t ed25519 github.com gitlab.com >>~/.ssh/known_hosts 2>/dev/null || true
 
     REPO_URL="${data.coder_parameter.repo.value}"
-    if [ -n "$REPO_URL" ] && [ ! -d "${local.repo_path}" ]; then
-      echo "Cloning $REPO_URL"
-      git clone "$REPO_URL" "${local.repo_path}" || echo "WARNING: clone failed"
+    if [ -n "$REPO_URL" ]; then
+      if [ ! -d "${local.repo_path}" ]; then
+        echo "Cloning $REPO_URL"
+        git clone "$REPO_URL" "${local.repo_path}" || echo "WARNING: clone failed"
+      fi
+
+      # Docker creates a missing bind-mount source as root, so bringing a Dev
+      # Container up can leave the checkout owned by another uid. Git then
+      # refuses to read it, and a devcontainer.json initializeCommand that asks
+      # git anything fails before the container is built.
+      git config --global --get-all safe.directory 2>/dev/null |
+        grep -qx "${local.repo_path}" ||
+        git config --global --add safe.directory "${local.repo_path}"
     fi
   EOT
 
