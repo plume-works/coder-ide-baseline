@@ -222,10 +222,12 @@ resource "coder_script" "second_repo" {
     target=$2
     url=$3
 
-    deadline=$(( $(date +%s) + 1200 ))
+    # A first Dev Container build pulls and builds everything the image needs,
+    # which for a large one runs well past the twenty minutes this first allowed.
+    deadline=$(( $(date +%s) + 3600 ))
     until devcontainer exec --workspace-folder "$folder" -- true >/dev/null 2>&1; do
       if [ "$(date +%s)" -ge "$deadline" ]; then
-        echo "WARNING: the Dev Container did not come up; $target was not cloned"
+        echo "WARNING: the Dev Container did not come up within an hour; $target was not cloned"
         exit 0
       fi
       sleep 5
