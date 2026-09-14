@@ -57,24 +57,39 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-# Remove the `ubuntu` user and add a user `chunk` so that you're not developing as the `root` user
+# Remove the `ubuntu` user and add a user `coder` so that you are not developing as the `root` user
 RUN userdel -r ubuntu && \
-    useradd chunk \
+    useradd coder \
     --create-home \
     --shell=/bin/bash \
     --groups=docker \
     --uid=1000 \
     --user-group && \
-    echo "chunk ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
+    echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
-USER chunk
-RUN pipx ensurepath # adds user's bin directory to PATH
-
-# Install nvm and Node.js LTS
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
-    . ~/.nvm/nvm.sh && \
+# Node lives outside /home/coder because that path is a volume mount at
+# runtime, which would otherwise mask it. /opt/node-bin is a stable symlink so
+# PATH does not name a Node version.
+ENV NVM_DIR=/opt/nvm
+RUN mkdir -p "$NVM_DIR" && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+    . "$NVM_DIR/nvm.sh" && \
     nvm install --lts && \
     nvm alias default lts/* && \
     nvm cache clear && \
     # devcontainers cli for prebuilding devcontainers
-    npm install -g @devcontainers/cli
+    npm install -g @devcontainers/cli && \
+    ln -sfn "$(dirname "$(command -v node)")" /opt/node-bin && \
+    chown -R coder:coder "$NVM_DIR"
+
+# On PATH for non-interactive shells too, which is how the agent runs scripts.
+ENV PATH=/opt/node-bin:$PATH:/home/coder/.local/bin
+
+# The home directory is a volume mount at runtime, which masks anything
+# baked into it; /etc/skel seeds it on first start instead.
+COPY bashrc /etc/skel/.bashrc
+COPY --chown=coder:coder bashrc /home/coder/.bashrc
+
+# systemd runs as PID 1 and must be root; the template drops to `coder` for
+# the agent.
+USER root

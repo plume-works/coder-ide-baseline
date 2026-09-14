@@ -5,11 +5,17 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  release:
+    types: [ published ]
   schedule:
     - cron: "0 0 * * 0"
 
 env:
-  DOCKER_IDE_IMAGE: lordchunk/coder-ide-baseline
+  # Derived from the repository so the image follows the owner automatically.
+  DOCKER_IDE_IMAGE: ${{ github.repository }}
+
+permissions:
+  contents: read
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -18,23 +24,26 @@ jobs:
       TAG_NAME:
     name: Docker Build and Push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
 
       ## Setup environment variables
       - name: Set branch name as Docker image tag
         shell: bash
-        run: echo "TAG_NAME=$(echo ${GITHUB_REF#refs/heads/} | tr / -)" >> $GITHUB_ENV
+        run: echo "TAG_NAME=$(echo "${GITHUB_REF#refs/heads/}" | tr / -)" >> "$GITHUB_ENV"
 
       - name: Replace master or main branch with latest tag
         if: env.TAG_NAME == 'main' || env.TAG_NAME == 'master'
         shell: bash
-        run: echo "TAG_NAME=latest" >> $GITHUB_ENV
+        run: echo "TAG_NAME=latest" >> "$GITHUB_ENV"
 
       - name: Set tag to release name if release event
         if: github.event_name == 'release'
         shell: bash
-        run: echo "TAG_NAME=$(echo $GITHUB_REF | cut -d / -f 3)" >> $GITHUB_ENV
+        run: echo "TAG_NAME=$(echo "${GITHUB_REF#refs/tags/}" | tr / -)" >> "$GITHUB_ENV"
 
       ## Configure, build and push docker image
       - name: Set up Docker Buildx
@@ -47,8 +56,12 @@ jobs:
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase image name
+        shell: bash
+        run: echo "DOCKER_IDE_IMAGE=${DOCKER_IDE_IMAGE,,}" >> "$GITHUB_ENV"
 
       - name: Build and push
         uses: docker/build-push-action@v7.2.0
@@ -61,29 +74,3 @@ jobs:
           # Use GitHub Actions cache
           cache-from: type=gha
           cache-to: type=gha,mode=max
-#   update-template:
-#     needs: docker
-#     name: Update template
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v7
-#       - name: Set up Docker Buildx
-#         uses: docker/setup-buildx-action@v4
-#       - name: Install Coder CLI
-#         run: curl -fsSL https://coder.com/install.sh | sh
-#       - name: Authenticate with Coder
-#         run: |
-#          coder login ${{ secrets.CODER_URL }} \
-#           --token ${{ secrets.CODER_TOKEN }}
-#       - name: Get hash of latest IDE image
-#         run: |
-#           echo "LATEST_IDE_IMAGE_HASH=$(docker buildx imagetools inspect ghcr.io/${{ env.DOCKER_IDE_IMAGE }}:latest --format "{{json .Manifest}}" | jq -r '.digest')" >> $GITHUB_ENV
-#       - name: Write hash to main.tf
-#         run: |
-#             cd template
-#             chmod +w main.tf
-#             sed -i "s|ghcr.io/${{ env.DOCKER_IDE_IMAGE }}:latest|ghcr.io/${{ env.DOCKER_IDE_IMAGE }}@${{ env.LATEST_IDE_IMAGE_HASH }}|g" main.tf
-#       - name: Push template changes to Coder
-#         run: |
-#           ./template/push.sh
-        

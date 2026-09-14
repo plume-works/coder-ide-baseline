@@ -1,3 +1,6 @@
-#! /bin/bash
+#!/usr/bin/env bash
+# Create the template on first run, or push a new version after that.
+set -euo pipefail
 cd "$(dirname "$0")"
-coder template push docker-in-docker --yes
+
+coder templates push "${TEMPLATE_NAME:-docker-in-docker}" --directory . --yes

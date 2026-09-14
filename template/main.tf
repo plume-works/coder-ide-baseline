@@ -1,173 +1,400 @@
-# Based on: https://github.com/sharkymark/v2-templates/tree/main/docker-in-docker/sysbox
+# Docker-in-Docker workspace running on the Sysbox runtime.
+# sysbox-runc must be installed on the Docker host; see README.md.
 
 terraform {
   required_providers {
     coder = {
       source  = "coder/coder"
-      version = "~> 0.7.0"
+      version = "~> 2.18"
     }
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0.2"
+      version = "~> 3.0"
     }
   }
 }
 
+variable "docker_socket" {
+  default     = ""
+  description = "(Optional) Docker socket URI"
+  type        = string
+}
+
 provider "docker" {
+  # Defaulting to null lets this stay optional without inventing a default.
+  host = var.docker_socket != "" ? var.docker_socket : null
 }
 
-provider "coder" {
-  feature_use_managed_variables = "true"
-}
+provider "coder" {}
 
-data "coder_workspace" "me" {
-}
+data "coder_provisioner" "me" {}
+data "coder_workspace" "me" {}
+data "coder_workspace_owner" "me" {}
 
-data "coder_parameter" "image" {
-  name = "Base image"
-  type = "string"
-  description = <<-EOF
-  Base image to use for the workspace.
+locals {
+  # The image bakes this user in; the home volume and apps must agree with it.
+  username = "coder"
+  home_dir = "/home/coder"
 
-  EOF
-  mutable = true
-  # Generate a list of options from the local.images map
-  option {
-    name   = "lordchunk/coder-ide-baseline"
-    value = "ghcr.io/lordchunk/coder-ide-baseline:latest" # This value is modified by root-container.yml Step: Write hash to main.tf
-  }
-}
+  # The image without any tag or digest, so the resolved digest can be
+  # appended. The parameter is free-form, so it may already carry either.
+  image_repo = replace(replace(data.coder_parameter.image.value, "/@[^@]+$/", ""), "/:[^:/]+$/", "")
 
+  # Where the clone lands; the startup script and coder_devcontainer must agree.
+  repo_dir  = replace(replace(data.coder_parameter.repo.value, "/^.*[\\/:]/", ""), "/\\.git$/", "")
+  repo_path = "${local.home_dir}/${local.repo_dir}"
 
-data  "coder_parameter" "repo" {
-  name = "Repository SSH URL"
-  type = "string"
-  description = <<-EOF
-  Code repository to clone
+  # The second clone is a sibling of the first inside the Dev Container, which
+  # mounts the first at /workspaces/<name>.
+  second_repo_dir  = replace(replace(data.coder_parameter.second_repo.value, "/^.*[\\/:]/", ""), "/\\.git$/", "")
+  second_repo_path = "/workspaces/${local.second_repo_dir}"
 
-  e.g. git@github.com:LordChunk/7beek-admin-dashboard.git
+  # Without the first repository there is no Dev Container to clone into.
+  second_repo_enabled = data.coder_parameter.second_repo.value != "" && data.coder_parameter.repo.value != ""
 
-  EOF
-}
+  # systemd hands units its own PATH rather than the image's, so the directories
+  # the image adds -- Node, the devcontainer CLI, pipx -- are named again here.
+  agent_unit = <<-EOT
+    [Unit]
+    Description=Coder Agent
+    Wants=network-online.target
+    After=network-online.target
 
-data "coder_parameter" "git_email" {
-  name = "Git email address"
-  type = "string"
-  description = <<-EOF
-  Git email address used for commits.
+    [Service]
+    Type=exec
+    User=${local.username}
+    Environment=PATH=/opt/node-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${local.home_dir}/.local/bin
+    EnvironmentFile=/etc/coder/agent.env
+    ExecStart=/bin/bash /etc/coder/agent-init.sh
+    Restart=on-failure
+    RestartSec=5
 
-  EOF
-  default = "LordChunk@users.noreply.github.com"
-}
-
-data "coder_parameter" "git_name" {
-  name = "Git name"
-  type = "string"
-  default = "LordChunk"
-}
-
-resource "docker_image" "base_image" {
-  name = data.coder_parameter.image.value
-  keep_locally = true
-}
-
-resource "coder_agent" "dev" {
-  arch           = "arm64"
-  os             = "linux"
-  startup_script  = <<EOT
-    #!/bin/bash
-
-    # Start Docker
-    sudo dockerd &
-
-    # Setup git
-    mkdir -p ~/.ssh
-    ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
-    ssh-keyscan -t ed25519 gitlab.com >> ~/.ssh/known_hosts
-
-    # Setup git user
-    git config --global user.email "${data.coder_parameter.git_email.value}"
-    git config --global user.name "${data.coder_parameter.git_name.value}"
-
-    # Clone repo
-    git clone ${data.coder_parameter.repo.value}
-
-    # # Set to lower case and strip user and .git from repo and 
-    # repo_folder=$(echo ${data.coder_parameter.repo.value} | tr '[:upper:]' '[:lower:]' | sed 's/.*\///' | sed 's/\.git//')
-
-    # # Manually add nvm to path for devcontainer prebuild
-    # export NVM_DIR="$HOME/.nvm"
-    # [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-
-    # # Navigate to repo if it exists
-    # if [ -d "$repo_folder" ]; then
-    #   cd $repo_folder
-
-    #   # Check if there is a .devcontainer folder
-    #   if [ -d ".devcontainer" ]; then
-    #     # Prebuild the devcontainer
-    #     devcontainer up --workspace-folder=.
-    #   fi
-    # fi
-
-    # install code-server
-    echo "Installing code-server"
-    curl -fsSL https://code-server.dev/install.sh | sh
-    echo "Starting code-server"
-    code-server --auth none --port 13337 ./ &
-    echo "Agent script finished"
+    [Install]
+    WantedBy=multi-user.target
   EOT
 }
 
-resource "coder_app" "code-server" {
-  agent_id = coder_agent.dev.id
-  slug          = "code-server"
-  display_name  = "VS Code"
-  url      = "http://localhost:13337/?folder=/home/chunk"
-  icon     = "/icon/code.svg"
-  subdomain = false
-  share     = "owner"
+data "coder_parameter" "image" {
+  name         = "image"
+  display_name = "Base image"
+  description  = "Base image to use for the workspace. It must run as root and provide systemd at /sbin/init, plus the tooling and a passwordless-sudo coder user."
+  type         = "string"
+  mutable      = true
+  default      = "ghcr.io/plume-works/coder-ide-baseline:latest"
+}
 
-  healthcheck {
-    url       = "http://localhost:13337/healthz"
-    interval  = 5
-    threshold = 15
-  }  
+data "coder_parameter" "repo" {
+  name         = "repo"
+  display_name = "Repository URL"
+  description  = "Repository to clone on first start and bring up as the workspace's Dev Container. Leave empty for a plain workspace with no Dev Container."
+  type         = "string"
+  mutable      = true
+  default      = "https://github.com/plume-works/agent-devcontainer.git"
+}
+
+data "coder_parameter" "second_repo" {
+  name         = "second_repo"
+  display_name = "Second repository URL"
+  description  = "Optional second repository, cloned inside the Dev Container at /workspaces/<name> as a sibling of the first. Ignored when Repository URL is empty."
+  type         = "string"
+  mutable      = true
+  default      = ""
+}
+
+resource "coder_agent" "dev" {
+  arch = data.coder_provisioner.me.arch
+  os   = "linux"
+
+  # Git identity comes from the Coder account rather than a template default.
+  env = {
+    GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
+    GIT_AUTHOR_EMAIL    = data.coder_workspace_owner.me.email
+    GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
+    GIT_COMMITTER_EMAIL = data.coder_workspace_owner.me.email
+  }
+
+  startup_script_behavior = "blocking"
+  startup_script          = <<-EOT
+    set -euo pipefail
+
+    # The home directory is a fresh volume on first start; seed it from skel.
+    if [ ! -f ~/.init_done ]; then
+      cp -rT /etc/skel ~ 2>/dev/null || true
+      touch ~/.init_done
+    fi
+
+    # systemd owns dockerd through docker.service; wait for it to come up.
+    echo "Waiting for Docker to become ready"
+    for _ in $(seq 1 60); do
+      if docker info >/dev/null 2>&1; then
+        echo "Docker is ready"
+        break
+      fi
+      sleep 2
+    done
+    docker info >/dev/null 2>&1 ||
+      echo "WARNING: Docker did not become ready; check 'systemctl status docker'"
+
+    mkdir -p ~/.ssh
+    chmod 700 ~/.ssh
+    ssh-keyscan -t ed25519 github.com gitlab.com >>~/.ssh/known_hosts 2>/dev/null || true
+
+    REPO_URL="${data.coder_parameter.repo.value}"
+    if [ -n "$REPO_URL" ]; then
+      if [ ! -d "${local.repo_path}" ]; then
+        echo "Cloning $REPO_URL"
+        git clone "$REPO_URL" "${local.repo_path}" || echo "WARNING: clone failed"
+      fi
+
+      # Docker creates a missing bind-mount source as root, so a Dev Container can
+      # leave the checkout owned by another uid; git then refuses it, failing any
+      # devcontainer.json initializeCommand that shells out to git before the build.
+      git config --global --get-all safe.directory 2>/dev/null |
+        grep -qx "${local.repo_path}" ||
+        git config --global --add safe.directory "${local.repo_path}"
+    fi
+  EOT
+
+  metadata {
+    display_name = "CPU Usage"
+    key          = "0_cpu_usage"
+    script       = "coder stat cpu"
+    interval     = 10
+    timeout      = 1
+  }
+
+  metadata {
+    display_name = "RAM Usage"
+    key          = "1_ram_usage"
+    script       = "coder stat mem"
+    interval     = 10
+    timeout      = 1
+  }
+
+  metadata {
+    display_name = "Home Disk"
+    key          = "2_home_disk"
+    script       = "coder stat disk --path $${HOME}"
+    interval     = 60
+    timeout      = 1
+  }
+}
+
+module "code-server" {
+  count    = data.coder_workspace.me.start_count
+  source   = "registry.coder.com/coder/code-server/coder"
+  version  = "~> 1.0"
+  agent_id = coder_agent.dev.id
+  folder   = local.home_dir
+  order    = 1
+}
+
+# The agent autostarts this Dev Container and exposes it as its own sub-agent.
+resource "coder_devcontainer" "repo" {
+  count            = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
+  agent_id         = coder_agent.dev.id
+  workspace_folder = local.repo_path
+}
+
+# The agent starts declared Dev Containers only after every start script exits,
+# so waiting here must be detached or it deadlocks. Polling `devcontainer exec`
+# cannot race the agent's `devcontainer up`: it only attaches to a live container.
+resource "coder_script" "second_repo" {
+  count              = local.second_repo_enabled ? data.coder_workspace.me.start_count : 0
+  agent_id           = coder_agent.dev.id
+  display_name       = "Clone second repository"
+  icon               = "/icon/git.svg"
+  run_on_start       = true
+  start_blocks_login = false
+  script             = <<-EOT
+    set -euo pipefail
+
+    LOG=/tmp/coder-second-repo.log
+    WORKER=/tmp/coder-second-repo.sh
+
+    # The worker runs from a file with stdin closed: fed on stdin instead, the
+    # `devcontainer exec` below would consume the rest of it as its own input.
+    cat >"$WORKER" <<'SCRIPT'
+    folder=$1
+    target=$2
+    url=$3
+
+    # A first Dev Container build pulls and builds everything the image needs;
+    # for a large image that runs well past twenty minutes, so allow an hour.
+    deadline=$(( $(date +%s) + 3600 ))
+    until devcontainer exec --workspace-folder "$folder" -- true >/dev/null 2>&1; do
+      if [ "$(date +%s)" -ge "$deadline" ]; then
+        echo "WARNING: the Dev Container did not come up within an hour; $target was not cloned"
+        exit 0
+      fi
+      sleep 5
+    done
+
+    echo "Cloning $url into $target"
+    devcontainer exec --workspace-folder "$folder" -- bash -c '
+      if [ -e "$1" ]; then
+        echo "$1 already exists; leaving it alone"
+      else
+        git clone "$2" "$1"
+      fi
+    ' _ "$target" "$url"
+    SCRIPT
+
+    echo "Waiting for the Dev Container in the background; progress in $LOG"
+    setsid bash "$WORKER" "${local.repo_path}" "${local.second_repo_path}" "${data.coder_parameter.second_repo.value}" >"$LOG" 2>&1 </dev/null &
+  EOT
+}
+
+resource "docker_volume" "home_volume" {
+  name = "coder-${data.coder_workspace.me.id}-home"
+
+  # Keep the volume across attribute changes so home data is not discarded.
+  lifecycle {
+    ignore_changes = all
+  }
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+  labels {
+    label = "coder.workspace_name_at_creation"
+    value = data.coder_workspace.me.name
+  }
+}
+
+resource "docker_volume" "docker_lib" {
+  name = "coder-${data.coder_workspace.me.id}-docker"
+
+  lifecycle {
+    ignore_changes = all
+  }
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+  labels {
+    label = "coder.workspace_name_at_creation"
+    value = data.coder_workspace.me.name
+  }
+}
+
+# Resolve the tag to a digest and run that digest. Naming the tag alone leaves
+# a host that already cached the tag on a stale image indefinitely.
+data "docker_registry_image" "base_image" {
+  name = data.coder_parameter.image.value
+}
+
+resource "docker_image" "base_image" {
+  name          = "${local.image_repo}@${data.docker_registry_image.base_image.sha256_digest}"
+  pull_triggers = [data.docker_registry_image.base_image.sha256_digest]
+  keep_locally  = true
 }
 
 resource "docker_container" "workspace" {
   count = data.coder_workspace.me.start_count
   image = docker_image.base_image.image_id
   # Uses lower() to avoid Docker restriction on container names.
-  name     = "coder-${data.coder_workspace.me.owner}-${lower(data.coder_workspace.me.name)}"
+  name     = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   hostname = lower(data.coder_workspace.me.name)
-  dns      = ["1.1.1.1"]
 
-  # Use the docker gateway if the access URL is 127.0.0.1
-  #entrypoint = ["sh", "-c", replace(coder_agent.dev.init_script, "127.0.0.1", "host.docker.internal")]
+  # Sysbox sets a container up for systemd only when its first argument is
+  # exactly `/sbin/init`, so systemd cannot be reached through a wrapper shell.
+  # The agent is a unit instead; docker.service supervises dockerd.
+  entrypoint = ["/sbin/init"]
+  command    = []
 
-  # Use the docker gateway if the access URL is 127.0.0.1
-  command = [
-    "bash", "-c",
-    <<EOT
-    trap '[ $? -ne 0 ] && echo === Agent script exited with non-zero code. Sleeping infinitely to preserve logs... && sleep infinity' EXIT
-    ${replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")}
+  # The agent must run as `coder`: devcontainer up maps the inner user to the
+  # invoking uid.
+
+  # Root-owned and not executable: systemd names the interpreter, so `coder`
+  # needs only to read what systemd runs as it.
+  upload {
+    file    = "/etc/coder/agent-init.sh"
+    content = <<-EOT
+      ${replace(coder_agent.dev.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")}
     EOT
-  ]
-  # required for sysbox runc to be used
+  }
+
+  upload {
+    file    = "/etc/coder/agent.env"
+    content = "CODER_AGENT_TOKEN=${coder_agent.dev.token}\n"
+  }
+
+  upload {
+    file    = "/etc/systemd/system/coder-agent.service"
+    content = local.agent_unit
+  }
+
+  # `systemctl enable` cannot run before systemd does, and systemd ignores a
+  # plain file dropped in a wants directory, where it expects a symlink. A
+  # target drop-in pulls the unit in without one.
+  upload {
+    file    = "/etc/systemd/system/multi-user.target.d/10-coder-agent.conf"
+    content = <<-EOT
+      [Unit]
+      Wants=coder-agent.service
+    EOT
+  }
+
+  # systemd as PID 1 reads SIGTERM as daemon-reexec, so a stop would end in
+  # SIGKILL with dockerd still writing to /var/lib/docker. SIGRTMIN+3 is its
+  # shutdown signal, and the grace period is what gives the stop time to run.
+  stop_signal           = "SIGRTMIN+3"
+  destroy_grace_seconds = 30
+
+  # Sysbox gives the workspace a working, unprivileged Docker.
   runtime = "sysbox-runc"
-  env        = ["CODER_AGENT_TOKEN=${coder_agent.dev.token}"]
-  volumes {
-    container_path = "/home/chunk/"
-    volume_name    = docker_volume.coder_volume.name
-    read_only      = false
-  }  
+
   host {
     host = "host.docker.internal"
     ip   = "host-gateway"
   }
-}
 
-resource "docker_volume" "coder_volume" {
-  name = "coder-${data.coder_workspace.me.owner}-${data.coder_workspace.me.name}"
+  volumes {
+    container_path = local.home_dir
+    volume_name    = docker_volume.home_volume.name
+    read_only      = false
+  }
+
+  # Without this the inner image cache is discarded on every restart.
+  volumes {
+    container_path = "/var/lib/docker"
+    volume_name    = docker_volume.docker_lib.name
+    read_only      = false
+  }
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+  labels {
+    label = "coder.workspace_name"
+    value = data.coder_workspace.me.name
+  }
 }
