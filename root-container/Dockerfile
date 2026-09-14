@@ -68,7 +68,7 @@ RUN userdel -r ubuntu && \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
 # Node lives outside /home/coder because that path is a volume mount at
-# runtime, which would otherwise mask it. /opt/node/bin is a stable symlink so
+# runtime, which would otherwise mask it. /opt/node-bin is a stable symlink so
 # PATH does not name a Node version.
 ENV NVM_DIR=/opt/nvm
 RUN mkdir -p "$NVM_DIR" && \
@@ -83,10 +83,7 @@ RUN mkdir -p "$NVM_DIR" && \
     chown -R coder:coder "$NVM_DIR"
 
 # On PATH for non-interactive shells too, which is how the agent runs scripts.
-ENV PATH=/opt/node-bin:$PATH
-
-USER coder
-RUN pipx ensurepath # adds user's bin directory to PATH
+ENV PATH=/opt/node-bin:$PATH:/home/coder/.local/bin
 
 # The home directory is a volume mount at runtime, which masks anything
 # baked into it; /etc/skel seeds it on first start instead.

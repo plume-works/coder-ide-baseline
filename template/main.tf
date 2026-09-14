@@ -52,8 +52,8 @@ locals {
   # Without the first repository there is no Dev Container to clone into.
   second_repo_enabled = data.coder_parameter.second_repo.value != "" && data.coder_parameter.repo.value != ""
 
-  # systemd hands units its own PATH rather than the image's, so the directory
-  # the image puts Node and the devcontainer CLI on has to be named again here.
+  # systemd hands units its own PATH rather than the image's, so the directories
+  # the image adds -- Node, the devcontainer CLI, pipx -- are named again here.
   agent_unit = <<-EOT
     [Unit]
     Description=Coder Agent
@@ -63,7 +63,7 @@ locals {
     [Service]
     Type=exec
     User=${local.username}
-    Environment=PATH=/opt/node-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    Environment=PATH=/opt/node-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${local.home_dir}/.local/bin
     EnvironmentFile=/etc/coder/agent.env
     ExecStart=/bin/bash /etc/coder/agent-init.sh
     Restart=on-failure
@@ -146,10 +146,9 @@ resource "coder_agent" "dev" {
         git clone "$REPO_URL" "${local.repo_path}" || echo "WARNING: clone failed"
       fi
 
-      # Docker creates a missing bind-mount source as root, so bringing a Dev
-      # Container up can leave the checkout owned by another uid. Git then
-      # refuses to read it, and a devcontainer.json initializeCommand that asks
-      # git anything fails before the container is built.
+      # Docker creates a missing bind-mount source as root, so a Dev Container can
+      # leave the checkout owned by another uid; git then refuses it, failing any
+      # devcontainer.json initializeCommand that shells out to git before the build.
       git config --global --get-all safe.directory 2>/dev/null |
         grep -qx "${local.repo_path}" ||
         git config --global --add safe.directory "${local.repo_path}"
@@ -197,11 +196,9 @@ resource "coder_devcontainer" "repo" {
   workspace_folder = local.repo_path
 }
 
-# The agent starts declared Dev Containers only once its start scripts have all
-# finished, so this waits in a detached process: waiting in the foreground would
-# hold back the very container it is waiting for. `devcontainer exec` only
-# attaches to a container that already exists, so polling it cannot race the
-# agent's own `devcontainer up`.
+# The agent starts declared Dev Containers only after every start script exits,
+# so waiting here must be detached or it deadlocks. Polling `devcontainer exec`
+# cannot race the agent's `devcontainer up`: it only attaches to a live container.
 resource "coder_script" "second_repo" {
   count              = local.second_repo_enabled ? data.coder_workspace.me.start_count : 0
   agent_id           = coder_agent.dev.id
@@ -222,8 +219,8 @@ resource "coder_script" "second_repo" {
     target=$2
     url=$3
 
-    # A first Dev Container build pulls and builds everything the image needs,
-    # which for a large one runs well past the twenty minutes this first allowed.
+    # A first Dev Container build pulls and builds everything the image needs;
+    # for a large image that runs well past twenty minutes, so allow an hour.
     deadline=$(( $(date +%s) + 3600 ))
     until devcontainer exec --workspace-folder "$folder" -- true >/dev/null 2>&1; do
       if [ "$(date +%s)" -ge "$deadline" ]; then
@@ -326,6 +323,7 @@ resource "docker_container" "workspace" {
 
   # The agent must run as `coder`: devcontainer up maps the inner user to the
   # invoking uid.
+
   # Root-owned and not executable: systemd names the interpreter, so `coder`
   # needs only to read what systemd runs as it.
   upload {
