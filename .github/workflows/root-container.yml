@@ -113,3 +113,31 @@ jobs:
           registry: ${{ env.REGISTRY }}
           registry-username: ${{ github.actor }}
           registry-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # The branch ruleset requires a check called "Docker Build and Push", the name
+  # the build carried before it was split across runners. This job keeps that
+  # name pointed at the whole build.
+  status:
+    name: Docker Build and Push
+    needs: [ prepare, build, merge ]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # `merge` is skipped when a run does not publish, which is a pass.
+      - name: Fail unless every job succeeded or was skipped
+        shell: bash
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: ${RESULTS}"
+          read -ra results <<<"${RESULTS}"
+          for result in "${results[@]}"; do
+            case "${result}" in
+              success | skipped) ;;
+              *)
+                echo "::error::a build job reported ${result}"
+                exit 1
+                ;;
+            esac
+          done
