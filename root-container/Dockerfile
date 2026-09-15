@@ -93,3 +93,8 @@ COPY --chown=coder:coder bashrc /home/coder/.bashrc
 # systemd runs as PID 1 and must be root; the template drops to `coder` for
 # the agent.
 USER root
+
+# Links the published package to this repository. Without the link a push
+# from Actions is denied `write_package`, whatever the workflow permissions
+# say, because an unlinked org package inherits no repository access.
+LABEL org.opencontainers.image.source=https://github.com/plume-works/coder-ide-baseline

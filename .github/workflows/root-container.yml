@@ -11,66 +11,133 @@ on:
     - cron: "0 0 * * 0"
 
 env:
-  # Derived from the repository so the image follows the owner automatically.
-  DOCKER_IDE_IMAGE: ${{ github.repository }}
+  REGISTRY: ghcr.io
 
 permissions:
   contents: read
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  docker:
-    env:
-      TAG_NAME:
-    name: Docker Build and Push
-    runs-on: ubuntu-latest
+  prepare:
+    name: Resolve build parameters
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+      publish: ${{ steps.publish.outputs.publish }}
+    steps:
+      # GHCR rejects an uppercase path, and `github.repository` preserves the
+      # case the owner and repository were created with.
+      - name: Lowercase the image name
+        id: name
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "image=${REGISTRY}/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      # A fork's GITHUB_TOKEN is read-only whatever `permissions` declares, so
+      # a fork builds both architectures as a check and publishes nothing.
+      - name: Decide whether this run publishes
+        id: publish
+        shell: bash
+        env:
+          IS_FORK: ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [ "${IS_FORK}" = 'true' ]; then
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Pull request from a fork: both architectures are built as a check, but no image is published.'
+            {
+              echo '### Images not published'
+              echo
+              echo 'This pull request comes from a fork. A fork token is read-only,'
+              echo 'so nothing was pushed to the registry.'
+              echo
+              echo 'Both architectures still built, so the build itself is verified.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: prepare
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ amd64, arm64 ]
+    # Each architecture builds on its own native runner; emulating arm64 under
+    # QEMU took roughly an order of magnitude longer.
+    runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     steps:
-      - uses: actions/checkout@v7
-
-      ## Setup environment variables
-      - name: Set branch name as Docker image tag
-        shell: bash
-        run: echo "TAG_NAME=$(echo "${GITHUB_REF#refs/heads/}" | tr / -)" >> "$GITHUB_ENV"
-
-      - name: Replace master or main branch with latest tag
-        if: env.TAG_NAME == 'main' || env.TAG_NAME == 'master'
-        shell: bash
-        run: echo "TAG_NAME=latest" >> "$GITHUB_ENV"
-
-      - name: Set tag to release name if release event
-        if: github.event_name == 'release'
-        shell: bash
-        run: echo "TAG_NAME=$(echo "${GITHUB_REF#refs/tags/}" | tr / -)" >> "$GITHUB_ENV"
-
-      ## Configure, build and push docker image
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Set up Docker QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Login to Docker registry
-        uses: docker/login-action@v4
+      - uses: actions/checkout@v7.0.1
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
-      - name: Lowercase image name
-        shell: bash
-        run: echo "DOCKER_IDE_IMAGE=${DOCKER_IDE_IMAGE,,}" >> "$GITHUB_ENV"
-
-      - name: Build and push
-        uses: docker/build-push-action@v7.2.0
+      - name: Build and push by digest
+        uses: ./.github/actions/docker/build-push-action
         with:
-          platforms: linux/arm64,linux/amd64
           context: ./root-container
-          # Only releases or pushes to development or main branch
-          push: ${{ github.event_name == 'release' || env.TAG_NAME == 'development' || env.TAG_NAME == 'latest' }}
-          tags: ghcr.io/${{ env.DOCKER_IDE_IMAGE }}:${{ env.TAG_NAME }}
-          # Use GitHub Actions cache
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          image: ${{ needs.prepare.outputs.image }}
+          arch: ${{ matrix.arch }}
+          push: ${{ needs.prepare.outputs.publish }}
+          export-digest: ${{ needs.prepare.outputs.publish }}
+          registry: ${{ env.REGISTRY }}
+          registry-username: ${{ github.actor }}
+          registry-token: ${{ secrets.GITHUB_TOKEN }}
+
+  merge:
+    name: Merge and push manifest
+    needs: [ prepare, build ]
+    # Nothing was pushed by digest, so there is no manifest to assemble.
+    if: needs.prepare.outputs.publish == 'true'
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # The per-architecture builds above push by digest and tag nothing; this
+      # joins those digests into the one manifest list the tags point at.
+      - name: Merge and push multi-arch manifest
+        uses: ./.github/actions/docker/multiarch-merge
+        with:
+          image: ${{ needs.prepare.outputs.image }}
+          registry: ${{ env.REGISTRY }}
+          registry-username: ${{ github.actor }}
+          registry-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # The branch ruleset requires a check called "Docker Build and Push", the name
+  # the build carried before it was split across runners. This job keeps that
+  # name pointed at the whole build.
+  status:
+    name: Docker Build and Push
+    needs: [ prepare, build, merge ]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # `merge` is skipped when a run does not publish, which is a pass.
+      - name: Fail unless every job succeeded or was skipped
+        shell: bash
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: ${RESULTS}"
+          read -ra results <<<"${RESULTS}"
+          for result in "${results[@]}"; do
+            case "${result}" in
+              success | skipped) ;;
+              *)
+                echo "::error::a build job reported ${result}"
+                exit 1
+                ;;
+            esac
+          done

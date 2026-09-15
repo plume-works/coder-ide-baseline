@@ -17,13 +17,30 @@ The base image is published to the GitHub Container Registry:
 ghcr.io/plume-works/coder-ide-baseline:latest
 ```
 
-Pushes to `main` publish the `latest` tag, and published releases publish a tag named after the release. Pull requests build the image without publishing it. The workspace user inside the image is `coder` (uid 1000), with the home directory at `/home/coder`.
+Pushes to `main` publish the `latest` tag, published releases publish a tag
+named after the release, and a pull request publishes `pr-<number>` so its
+image can be pulled and tested before merge. Each architecture builds on its
+own native runner and the two are joined into one manifest list. The workspace
+user inside the image is `coder` (uid 1000), with the home directory at
+`/home/coder`.
 
-A GitHub Container Registry package is not public when it is first published.
-Unless the Docker host running the workspaces authenticates to `ghcr.io`, set
-the package visibility to public once, under
-`Package settings -> Change visibility`; otherwise the workspace build fails to
-pull the image with `unauthorized`.
+A pull request from a fork builds both architectures but publishes nothing: a
+fork's `GITHUB_TOKEN` is read-only no matter what the workflow declares. The
+checks still run and still gate the merge, so the build stays a useful signal.
+The run records that nothing was published in a warning and its job summary.
+
+Two package settings gate publishing and pulling, and they are independent.
+Both live under `Package settings` on the package page.
+
+- **Actions access** decides whether this repository's workflow may push at
+  all. The package must appear under `Manage Actions access` with the `Write`
+  role; otherwise the push fails with `denied: permission_denied:
+  write_package`. A package that Actions created is linked and granted this
+  automatically -- one first pushed by hand from a personal token is not.
+- **Visibility** decides whether the Docker host may pull. A package is
+  private when first published, so unless that host authenticates to
+  `ghcr.io`, set visibility to public once under `Change visibility`;
+  otherwise the workspace build fails to pull with `unauthorized`.
 
 To build the image locally for the current architecture:
 
