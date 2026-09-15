@@ -1,4 +1,4 @@
-FROM ubuntu:noble
+FROM ubuntu:noble@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
 
 SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
@@ -71,14 +71,18 @@ RUN userdel -r ubuntu && \
 # runtime, which would otherwise mask it. /opt/node-bin is a stable symlink so
 # PATH does not name a Node version.
 ENV NVM_DIR=/opt/nvm
+# renovate: datasource=github-tags depName=nvm-sh/nvm
+ARG NVM_VERSION=v0.39.7
+# renovate: datasource=npm depName=@devcontainers/cli
+ARG DEVCONTAINERS_CLI_VERSION=0.89.0
 RUN mkdir -p "$NVM_DIR" && \
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+    curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh" | bash && \
     . "$NVM_DIR/nvm.sh" && \
     nvm install --lts && \
     nvm alias default lts/* && \
     nvm cache clear && \
     # devcontainers cli for prebuilding devcontainers
-    npm install -g @devcontainers/cli && \
+    npm install -g "@devcontainers/cli@${DEVCONTAINERS_CLI_VERSION}" && \
     ln -sfn "$(dirname "$(command -v node)")" /opt/node-bin && \
     chown -R coder:coder "$NVM_DIR"
 
