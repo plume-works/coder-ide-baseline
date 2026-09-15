@@ -51,6 +51,9 @@ runs:
       id: meta
       with:
         images: ${{ inputs.images }}
+        # `latest` comes only from the gated type=raw entry below; the
+        # default latest=auto would also attach it to type=ref,event=tag.
+        flavor: latest=false
         tags: |
           type=raw,value=latest,enable={{is_default_branch}}${{ steps.extra-args.outputs.result }}
           type=ref,event=tag${{ steps.extra-args.outputs.result }}

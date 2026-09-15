@@ -24,8 +24,10 @@ own native runner and the two are joined into one manifest list. The workspace
 user inside the image is `coder` (uid 1000), with the home directory at
 `/home/coder`.
 
-A pull request from a fork cannot publish: its `GITHUB_TOKEN` is read-only
-however the workflow declares `packages: write`.
+A pull request from a fork builds both architectures but publishes nothing: a
+fork's `GITHUB_TOKEN` is read-only no matter what the workflow declares. The
+checks still run and still gate the merge, so the build stays a useful signal,
+and a notice comment on the pull request records that no image was pushed.
 
 Two package settings gate publishing and pulling, and they are independent.
 Both live under `Package settings` on the package page.

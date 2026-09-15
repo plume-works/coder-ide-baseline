@@ -125,4 +125,6 @@ runs:
       env:
         DIGESTS_DIR: ${{ steps.digests.outputs.digests_dir }}
       run: |
-        rm -rf "${DIGESTS_DIR}/*"
+        if [ -n "${DIGESTS_DIR}" ]; then
+          rm -rf "${DIGESTS_DIR}"
+        fi
