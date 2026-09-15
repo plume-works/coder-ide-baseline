@@ -26,8 +26,8 @@ user inside the image is `coder` (uid 1000), with the home directory at
 
 A pull request from a fork builds both architectures but publishes nothing: a
 fork's `GITHUB_TOKEN` is read-only no matter what the workflow declares. The
-checks still run and still gate the merge, so the build stays a useful signal,
-and a notice comment on the pull request records that no image was pushed.
+checks still run and still gate the merge, so the build stays a useful signal.
+The run records that nothing was published in a warning and its job summary.
 
 Two package settings gate publishing and pulling, and they are independent.
 Both live under `Package settings` on the package page.
