@@ -1,0 +1,66 @@
+name: Docker metadata action
+description: Extract metadata (tags, labels) for docker image
+inputs:
+  images:
+    description: Image names to pass to metadata-action
+    default: ''
+  arch:
+    description: Architecture to use as suffix
+    required: false
+    default: ''
+  prefix:
+    description: A tag prefix
+    required: false
+    default: ''
+outputs:
+  tags:
+    description: Docker tags for the images
+    value: ${{ steps.meta.outputs.tags }}
+  tag:
+    description: Docker tag for the images
+    value: ${{ steps.single-tag.outputs.result }}
+  labels:
+    description: Docker labels for the images
+    value: ${{ steps.meta.outputs.labels }}
+  version:
+    description: Docker version for the images
+    value: ${{ steps.meta.outputs.version }}
+  json:
+    description: Docker json for the images
+    value: ${{ steps.meta.outputs.json }}
+runs:
+  using: composite
+  steps:
+    - name: Generate suffix and prefix if set
+      shell: bash
+      id: extra-args
+      run: |
+        EXTRA_ARGS=''
+        if [ -n "${INPUTS_PREFIX}" ]; then
+          EXTRA_ARGS="${EXTRA_ARGS},prefix=${INPUTS_PREFIX}"
+        fi
+        if [ -n "${INPUTS_ARCH}" ]; then
+          EXTRA_ARGS="${EXTRA_ARGS},suffix=-${INPUTS_ARCH}"
+        fi
+        echo "result=${EXTRA_ARGS}" >> "$GITHUB_OUTPUT"
+      env:
+        INPUTS_PREFIX: ${{ inputs.prefix }}
+        INPUTS_ARCH: ${{ inputs.arch }}
+
+    - uses: docker/metadata-action@v6.2.0
+      id: meta
+      with:
+        images: ${{ inputs.images }}
+        tags: |
+          type=raw,value=latest,enable={{is_default_branch}}${{ steps.extra-args.outputs.result }}
+          type=ref,event=tag${{ steps.extra-args.outputs.result }}
+          type=ref,event=pr${{ steps.extra-args.outputs.result }}
+
+    - name: Extract single tag
+      shell: bash -xeuo pipefail {0}
+      id: single-tag
+      run: |
+        first_tag=$(echo "${STEPS_META_OUTPUTS_TAGS}" | head -n1 | tr -d '\r')
+        echo "result=$first_tag" >> "$GITHUB_OUTPUT"
+      env:
+        STEPS_META_OUTPUTS_TAGS: ${{ steps.meta.outputs.tags }}
