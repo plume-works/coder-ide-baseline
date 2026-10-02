@@ -17,7 +17,7 @@ permissions:
 jobs:
   prepare:
     name: Resolve build parameters
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       image: ${{ steps.name.outputs.image }}
@@ -96,7 +96,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -119,7 +119,7 @@ jobs:
     name: Docker Build and Push
     needs: [ prepare, build, merge ]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       # `merge` is skipped when a run does not publish, which is a pass.
