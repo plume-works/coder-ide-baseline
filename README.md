@@ -69,11 +69,12 @@ systemd runs as PID 1 in the workspace and `docker.service` supervises
 The `repo` parameter clones that repository into the home directory and
 registers it as a Dev Container, defaulting to `agent-devcontainer`. The agent
 runs `devcontainer up` on it and Coder exposes the running container as a
-sub-agent, so an editor attaches to the Dev Container itself rather than to the
-workspace around it:
+sub-agent named `repo`, after the `coder_devcontainer.repo` resource, so an
+editor attaches to the Dev Container itself rather than to the workspace around
+it:
 
 ```bash
-coder ssh <workspace>.<repo-name>
+coder ssh <workspace>.repo
 ```
 
 Clearing `repo` gives a plain workspace with no Dev Container.
