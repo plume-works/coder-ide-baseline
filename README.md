@@ -85,6 +85,12 @@ Dev Container to clone into. That path is in the Dev Container's own filesystem
 rather than on the home volume, so the second clone is recreated whenever the
 Dev Container is rebuilt.
 
+On every start, the Dev Container's sub-agent runs
+`.devcontainer/scripts/claude-remote-control-start.sh` from the cloned
+repository when it ships one, so Claude Remote Control inherits the agent's
+environment: Coder user secrets and its git credential helper. A repository
+without the script is left alone.
+
 ## Usage
 
 You'll need the Coder CLI on your local machine to create and push the template. You can find the installation instructions [here](https://coder.com/docs/install/cli).
