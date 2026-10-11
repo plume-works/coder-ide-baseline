@@ -1,0 +1,2 @@
+# Provider and module cache from `terraform init`; the lock file is tracked.
+.terraform/
