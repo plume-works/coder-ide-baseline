@@ -5,11 +5,11 @@ terraform {
   required_providers {
     coder = {
       source  = "coder/coder"
-      version = "~> 2.18"
+      version = "~> 2.19"
     }
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 4.6"
     }
   }
 }
@@ -183,7 +183,7 @@ resource "coder_agent" "dev" {
 module "code-server" {
   count    = data.coder_workspace.me.start_count
   source   = "registry.coder.com/coder/code-server/coder"
-  version  = "~> 1.0"
+  version  = "~> 1.6"
   agent_id = coder_agent.dev.id
   folder   = local.home_dir
   order    = 1
@@ -194,6 +194,21 @@ resource "coder_devcontainer" "repo" {
   count            = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
   agent_id         = coder_agent.dev.id
   workspace_folder = local.repo_path
+}
+
+# Runs under the Dev Container's sub-agent, so Remote Control inherits the
+# agent's environment: Coder user secrets and its git credential helper.
+resource "coder_script" "claude_remote_control" {
+  count              = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
+  agent_id           = coder_devcontainer.repo[0].subagent_id
+  display_name       = "Claude Remote Control"
+  run_on_start       = true
+  start_blocks_login = false
+  script             = <<-EOT
+    s=/workspaces/${local.repo_dir}/.devcontainer/scripts/claude-remote-control-start.sh
+    if [ -x "$s" ]; then exec "$s"; fi
+    echo "This repository ships no Remote Control start script."
+  EOT
 }
 
 # The agent starts declared Dev Containers only after every start script exits,
