@@ -196,6 +196,18 @@ resource "coder_devcontainer" "repo" {
   workspace_folder = local.repo_path
 }
 
+# The Dev Container sub-agent otherwise offers only VS Code Desktop. The default
+# subdomain app needs the deployment's wildcard access URL.
+module "vscode-web" {
+  count          = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
+  source         = "registry.coder.com/coder/vscode-web/coder"
+  version        = "~> 1.6"
+  agent_id       = coder_devcontainer.repo[0].subagent_id
+  folder         = "/workspaces/${local.repo_dir}"
+  accept_license = true
+  order          = 1
+}
+
 # Runs under the Dev Container's sub-agent, so Remote Control inherits the
 # agent's environment: Coder user secrets and its git credential helper.
 resource "coder_script" "claude_remote_control" {
