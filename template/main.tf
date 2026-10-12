@@ -323,6 +323,31 @@ resource "docker_volume" "docker_lib" {
   }
 }
 
+resource "docker_volume" "containerd_lib" {
+  name = "coder-${data.coder_workspace.me.id}-containerd"
+
+  lifecycle {
+    ignore_changes = all
+  }
+
+  labels {
+    label = "coder.owner"
+    value = data.coder_workspace_owner.me.name
+  }
+  labels {
+    label = "coder.owner_id"
+    value = data.coder_workspace_owner.me.id
+  }
+  labels {
+    label = "coder.workspace_id"
+    value = data.coder_workspace.me.id
+  }
+  labels {
+    label = "coder.workspace_name_at_creation"
+    value = data.coder_workspace.me.name
+  }
+}
+
 # Resolve the tag to a digest and run that digest. Naming the tag alone leaves
 # a host that already cached the tag on a stale image indefinitely.
 data "docker_registry_image" "base_image" {
@@ -405,6 +430,14 @@ resource "docker_container" "workspace" {
   volumes {
     container_path = "/var/lib/docker"
     volume_name    = docker_volume.docker_lib.name
+    read_only      = false
+  }
+
+  # The containerd image store keeps image content here, apart from
+  # /var/lib/docker; both must persist for the inner engine to stay consistent.
+  volumes {
+    container_path = "/var/lib/containerd"
+    volume_name    = docker_volume.containerd_lib.name
     read_only      = false
   }
 
