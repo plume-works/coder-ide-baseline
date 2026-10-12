@@ -101,6 +101,15 @@ data "coder_parameter" "second_repo" {
   default      = ""
 }
 
+data "coder_parameter" "agent_start_script" {
+  name         = "agent_start_script"
+  display_name = "Agent start script"
+  description  = "Script the Dev Container's agent runs on every start, as a path relative to the repository root. Leave empty to run nothing."
+  type         = "string"
+  mutable      = true
+  default      = ".devcontainer/scripts/coder-agent-start.sh"
+}
+
 resource "coder_agent" "dev" {
   arch = data.coder_provisioner.me.arch
   os   = "linux"
@@ -208,18 +217,19 @@ module "vscode-web" {
   order          = 1
 }
 
-# Runs under the Dev Container's sub-agent, so Remote Control inherits the
-# agent's environment: Coder user secrets and its git credential helper.
-resource "coder_script" "claude_remote_control" {
+# Runs under the Dev Container's sub-agent, so the repository's agent-start
+# script inherits the agent's environment, including Coder user secrets.
+resource "coder_script" "agent_start" {
   count              = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
   agent_id           = coder_devcontainer.repo[0].subagent_id
-  display_name       = "Claude Remote Control"
+  display_name       = "Dev Container agent start"
   run_on_start       = true
   start_blocks_login = false
   script             = <<-EOT
-    s=/workspaces/${local.repo_dir}/.devcontainer/scripts/claude-remote-control-start.sh
-    if [ -x "$s" ]; then exec "$s"; fi
-    echo "This repository ships no Remote Control start script."
+    rel='${data.coder_parameter.agent_start_script.value}'
+    s="/workspaces/${local.repo_dir}/$rel"
+    if [ -n "$rel" ] && [ -f "$s" ] && [ -x "$s" ]; then exec "$s"; fi
+    echo "This repository ships no agent-start script."
   EOT
 }
 
