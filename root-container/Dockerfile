@@ -46,6 +46,9 @@ RUN apt-get update && \
 # Enables Docker starting with systemd
 RUN systemctl enable docker
 
+# Caps the workspace engine's BuildKit cache at 10 GB.
+COPY daemon.json /etc/docker/daemon.json
+
 # Create a symlink for standalone docker-compose usage
 RUN ln -s /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose
 

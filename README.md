@@ -64,6 +64,12 @@ Without it, workspace builds fail with
 systemd runs as PID 1 in the workspace and `docker.service` supervises
 `dockerd`; the Coder agent starts alongside it as the `coder` user.
 
+Workspaces share the host disk, so the workspace engine bounds its own
+storage: `/etc/docker/daemon.json` caps the BuildKit cache at 10 GB, and every
+agent start runs `docker image prune -af --filter until=72h`, removing images
+that no container references and that were created more than 72 hours ago. A
+stopped Dev Container still references its image, so the image is kept.
+
 ## Dev Containers
 
 The `repo` parameter clones that repository into the home directory and
