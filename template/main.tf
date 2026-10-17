@@ -222,6 +222,26 @@ module "vscode-web" {
   order          = 1
 }
 
+# Subdomain apps prefix every request with the url's path, so the web UI is
+# reachable only at its root. Without a server on 4096 the app shows unhealthy.
+resource "coder_app" "opencode" {
+  count        = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
+  agent_id     = coder_devcontainer.repo[0].subagent_id
+  slug         = "opencode"
+  display_name = "OpenCode"
+  icon         = "/icon/opencode.svg"
+  url          = "http://localhost:4096"
+  subdomain    = true
+  share        = "owner"
+  order        = 2
+
+  healthcheck {
+    url       = "http://localhost:4096/site.webmanifest"
+    interval  = 10
+    threshold = 6
+  }
+}
+
 # Runs under the Dev Container's sub-agent, so the repository's agent-start
 # script inherits the agent's environment, including Coder user secrets.
 resource "coder_script" "agent_start" {
