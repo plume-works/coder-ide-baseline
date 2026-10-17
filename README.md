@@ -92,11 +92,17 @@ Dev Container to clone into. That path is in the Dev Container's own filesystem
 rather than on the home volume, so the second clone is recreated whenever the
 Dev Container is rebuilt.
 
-On every start, the Dev Container's sub-agent runs
-`.devcontainer/scripts/claude-remote-control-start.sh` from the cloned
-repository when it ships one, so Claude Remote Control inherits the agent's
-environment: Coder user secrets and its git credential helper. A repository
-without the script is left alone.
+On every start, the Dev Container's sub-agent runs the repository's
+agent-start script, so whatever it launches inherits the agent's environment:
+Coder user secrets and its git credential helper. The `agent_start_script`
+parameter names it as a path relative to the repository root, defaulting to
+`.devcontainer/scripts/coder-agent-start.sh`; a repository without an
+executable script there is left alone, and an empty value runs nothing.
+
+The sub-agent also carries an **OpenCode** app, a subdomain app at
+`http://localhost:4096` for a repository whose agent-start script runs
+`opencode web` on that port. It opens the web UI's project picker, and its
+healthcheck on `/site.webmanifest` marks it unhealthy where no server runs.
 
 ## Usage
 
