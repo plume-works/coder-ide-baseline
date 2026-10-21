@@ -433,6 +433,10 @@ resource "docker_container" "workspace" {
   entrypoint = ["/sbin/init"]
   command    = []
 
+  # Keep running workspaces aligned with Coder across Docker host restarts.
+  # Stopped workspaces have count zero, so Coder still destroys their container.
+  restart = "always"
+
   # The agent must run as `coder`: devcontainer up maps the inner user to the
   # invoking uid.
 
