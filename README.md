@@ -74,10 +74,11 @@ stopped Dev Container still references its image, so the image is kept.
 
 The `repo` parameter clones that repository into the home directory and
 registers it as a Dev Container, defaulting to `agent-devcontainer`. The agent
-runs `devcontainer up` on it and Coder exposes the running container as a
-sub-agent named `repo`, after the `coder_devcontainer.repo` resource, so an
-editor attaches to the Dev Container itself rather than to the workspace around
-it:
+pulls the checkout's current branch with a fast-forward-only update before each
+`devcontainer up`. A failed pull logs a warning and does not block startup. Coder
+then exposes the running container as a sub-agent named `repo`, after the
+`coder_devcontainer.repo` resource, so an editor attaches to the Dev Container
+itself rather than to the workspace around it:
 
 ```bash
 coder ssh <workspace>.repo
