@@ -166,6 +166,10 @@ resource "coder_agent" "dev" {
       git config --global --get-all safe.directory 2>/dev/null |
         grep -qx "${local.repo_path}" ||
         git config --global --add safe.directory "${local.repo_path}"
+
+      echo "Pulling the repository's current branch before starting the Dev Container"
+      timeout 30s git -C "${local.repo_path}" pull --ff-only ||
+        echo "WARNING: branch pull failed; continuing with the existing checkout"
     fi
   EOT
 
