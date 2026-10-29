@@ -76,7 +76,10 @@ The `repo` parameter clones that repository into the home directory and
 registers it as a Dev Container, defaulting to `agent-devcontainer`. The agent
 pulls the checkout's current branch with a fast-forward-only update before each
 `devcontainer up`. The pull has a 30-second timeout; a timeout or other failure
-logs a warning and does not block startup. Coder then exposes the running
+logs a warning and does not block startup. Before the pull, the agent hands
+any file in the checkout not owned by `coder` back to `coder`: a Dev Container
+running as root writes root-owned files into the bind-mounted checkout, which
+the pull, running as `coder`, could not otherwise overwrite. Coder then exposes the running
 container as a sub-agent named `repo`, after the
 `coder_devcontainer.repo` resource, so an editor attaches to the Dev Container
 itself rather than to the workspace around it:
