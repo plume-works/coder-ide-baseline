@@ -77,7 +77,7 @@ ENV NVM_DIR=/opt/nvm
 # renovate: datasource=github-tags depName=nvm-sh/nvm
 ARG NVM_VERSION=v0.40.8
 # renovate: datasource=npm depName=@devcontainers/cli
-ARG DEVCONTAINERS_CLI_VERSION=0.89.0
+ARG DEVCONTAINERS_CLI_VERSION=0.90.0
 RUN mkdir -p "$NVM_DIR" && \
     curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh" | bash && \
     . "$NVM_DIR/nvm.sh" && \
