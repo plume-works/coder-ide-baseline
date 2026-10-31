@@ -103,11 +103,11 @@ data "coder_parameter" "second_repo" {
 
 data "coder_parameter" "agent_start_script" {
   name         = "agent_start_script"
-  display_name = "Agent start script"
-  description  = "Script the Dev Container's agent runs on every start, as a path relative to the repository root. Leave empty to run nothing."
+  display_name = "Agent start command"
+  description  = "Command the Dev Container's agent runs in the repository checkout on every start. Leave empty to run nothing."
   type         = "string"
   mutable      = true
-  default      = ".devcontainer/scripts/coder-agent-start.sh"
+  default      = "agentdev-runtime coder start"
 }
 
 resource "coder_agent" "dev" {
@@ -255,7 +255,8 @@ resource "coder_app" "opencode" {
 }
 
 # Runs under the Dev Container's sub-agent, so the repository's agent-start
-# script inherits the agent's environment, including Coder user secrets.
+# command inherits the agent's environment, including Coder user secrets.
+# Workspaces created earlier stored the retired script path, so it maps to the default.
 resource "coder_script" "agent_start" {
   count              = data.coder_parameter.repo.value != "" ? data.coder_workspace.me.start_count : 0
   agent_id           = coder_devcontainer.repo[0].subagent_id
@@ -263,10 +264,17 @@ resource "coder_script" "agent_start" {
   run_on_start       = true
   start_blocks_login = false
   script             = <<-EOT
-    rel='${data.coder_parameter.agent_start_script.value}'
-    s="/workspaces/${local.repo_dir}/$rel"
-    if [ -n "$rel" ] && [ -f "$s" ] && [ -x "$s" ]; then exec "$s"; fi
-    echo "This repository ships no agent-start script."
+    cmd='${data.coder_parameter.agent_start_script.value}'
+    legacy=.devcontainer/scripts/coder-agent-start.sh
+    if [ "$cmd" = "$legacy" ]; then cmd='agentdev-runtime coder start'; fi
+    set -f
+    set -- $cmd
+    if [ "$#" -gt 0 ] && cd "/workspaces/${local.repo_dir}" 2>/dev/null; then
+      if command -v "$1" >/dev/null 2>&1; then exec "$@"; fi
+      # A checkout or image from before the CLI still ships the script.
+      if [ -f "$legacy" ] && [ -x "$legacy" ]; then exec "./$legacy"; fi
+    fi
+    echo "This repository ships no agent-start command."
   EOT
 }
 

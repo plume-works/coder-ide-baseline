@@ -98,14 +98,17 @@ rather than on the home volume, so the second clone is recreated whenever the
 Dev Container is rebuilt.
 
 On every start, the Dev Container's sub-agent runs the repository's
-agent-start script, so whatever it launches inherits the agent's environment:
-Coder user secrets and its git credential helper. The `agent_start_script`
-parameter names it as a path relative to the repository root, defaulting to
-`.devcontainer/scripts/coder-agent-start.sh`; a repository without an
-executable script there is left alone, and an empty value runs nothing.
+agent-start command in the checkout, so whatever it launches inherits the
+agent's environment: Coder user secrets and its git credential helper. The
+`agent_start_script` parameter holds that command, defaulting to
+`agentdev-runtime coder start`. A command whose first word does not resolve is
+skipped with a log line, and an empty value runs nothing. The retired default,
+`.devcontainer/scripts/coder-agent-start.sh`, which existing workspaces still
+store, runs the new default; where the command does not resolve and the
+checkout still ships that executable script, the script runs instead.
 
 The sub-agent also carries an **OpenCode** app, a subdomain app at
-`http://localhost:4096` for a repository whose agent-start script runs
+`http://localhost:4096` for a repository whose agent-start command runs
 `opencode web` on that port. It opens the web UI's project picker, and its
 healthcheck on `/site.webmanifest` marks it unhealthy where no server runs.
 
@@ -115,4 +118,4 @@ You'll need the Coder CLI on your local machine to create and push the template.
 
 Once you have the CLI installed, run `./template/push.sh`. It creates the
 template on the first run and pushes a new version on later runs. Set
-`TEMPLATE_NAME` to use a name other than `docker-in-docker`.
+`TEMPLATE_NAME` to use a name other than `coder-ide-baseline`.
