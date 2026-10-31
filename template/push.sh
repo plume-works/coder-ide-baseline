@@ -3,4 +3,4 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-coder templates push "${TEMPLATE_NAME:-docker-in-docker}" --directory . --yes
+coder templates push "${TEMPLATE_NAME:-coder-ide-baseline}" --directory . --yes

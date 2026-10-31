@@ -118,4 +118,4 @@ You'll need the Coder CLI on your local machine to create and push the template.
 
 Once you have the CLI installed, run `./template/push.sh`. It creates the
 template on the first run and pushes a new version on later runs. Set
-`TEMPLATE_NAME` to use a name other than `docker-in-docker`.
+`TEMPLATE_NAME` to use a name other than `coder-ide-baseline`.
