@@ -141,11 +141,8 @@ resource "coder_agent" "dev" {
       fi
       sleep 2
     done
-    if docker info >/dev/null 2>&1; then
-      # Removes images no container references that were created over 72 hours ago.
-      docker image prune -af --filter until=72h ||
-        echo "WARNING: docker image prune failed"
-    else
+    # Garbage collection is the base image's docker-gc.timer, not this script.
+    if ! docker info >/dev/null 2>&1; then
       echo "WARNING: Docker did not become ready; check 'systemctl status docker'"
     fi
 

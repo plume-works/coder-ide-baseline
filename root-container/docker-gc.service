@@ -1,0 +1,8 @@
+[Unit]
+Description=Collect the workspace engine's unused Docker images, build cache and volumes
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/docker-gc

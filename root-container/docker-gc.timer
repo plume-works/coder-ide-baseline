@@ -1,0 +1,9 @@
+[Unit]
+Description=Run docker-gc 15 minutes after boot, then hourly
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target
