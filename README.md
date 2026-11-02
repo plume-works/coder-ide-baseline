@@ -65,10 +65,14 @@ systemd runs as PID 1 in the workspace and `docker.service` supervises
 `dockerd`; the Coder agent starts alongside it as the `coder` user.
 
 Workspaces share the host disk, so the workspace engine bounds its own
-storage: `/etc/docker/daemon.json` caps the BuildKit cache at 10 GB, and every
-agent start runs `docker image prune -af --filter until=72h`, removing images
-that no container references and that were created more than 72 hours ago. A
-stopped Dev Container still references its image, so the image is kept.
+storage: `/etc/docker/daemon.json` caps the BuildKit cache at 10 GB, and the
+systemd `docker-gc.timer` runs `/usr/local/bin/docker-gc` 15 minutes after boot
+and then hourly. Each run removes images that no container references and that
+were created more than 72 hours ago, trims the build cache to 10 GB, and removes
+unused volumes older than 72 hours whose names mark them disposable: the nested
+engines' `dind-var-lib-*` storage and the retired `*_agentdev-cache` and
+`*_agentdev-codex` volumes. Every other volume, logins included, is kept. A
+stopped Dev Container still references its image and volumes, so they are kept.
 
 ## Dev Containers
 

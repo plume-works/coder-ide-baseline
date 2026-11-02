@@ -49,6 +49,12 @@ RUN systemctl enable docker
 # Caps the workspace engine's BuildKit cache at 10 GB.
 COPY daemon.json /etc/docker/daemon.json
 
+# Collects unused images, build cache and disposable volumes hourly, since a
+# workspace can run for days without restarting.
+COPY docker-gc /usr/local/bin/docker-gc
+COPY docker-gc.service docker-gc.timer /etc/systemd/system/
+RUN systemctl enable docker-gc.timer
+
 # Create a symlink for standalone docker-compose usage
 RUN ln -s /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose
 

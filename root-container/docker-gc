@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# One garbage-collection pass over the workspace engine; each failed step only warns.
+# Same rules as agentdev-runtime docker gc (agent-devcontainer spec/devcontainer-docker-storage).
+set -euo pipefail
+
+max_age_hours=72
+cache_limit=10GB
+disposable='(^|_)dind-var-lib-(docker|containerd)-|_agentdev-(cache|codex)$'
+
+warn() { echo "Warning: $1 failed; continuing." >&2; }
+
+if ! docker info >/dev/null 2>&1; then
+  echo 'The Docker daemon is unreachable; skipping garbage collection.'
+  exit 0
+fi
+
+docker image prune -af --filter "until=${max_age_hours}h" || warn 'image prune'
+docker builder prune -f --max-used-space "$cache_limit" || warn 'build cache prune'
+
+cutoff=$(($(date +%s) - max_age_hours * 3600))
+volumes=$(docker volume ls -q --filter dangling=true) || {
+  warn 'volume listing'
+  volumes=''
+}
+for volume in $volumes; do
+  [[ $volume =~ $disposable ]] || continue
+  created=$(docker volume inspect --format '{{.CreatedAt}}' "$volume") || {
+    warn "inspection of $volume"
+    continue
+  }
+  if (($(date -d "$created" +%s) < cutoff)); then
+    docker volume rm "$volume" || warn "removal of $volume"
+  fi
+done
+exit 0
