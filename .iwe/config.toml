@@ -1,0 +1,117 @@
+version = 4
+
+[markdown]
+refs_extension = ".md"
+date_format = "%b %d, %Y"
+
+[markdown.formatting]
+wrap_column = 80
+
+[workspace]
+# Documents live under docs/knowledge/ rather than at the repo root so that
+# .iwe/ itself stays at the repo root, where the IWE VS Code extension expects
+# it when the whole repo is opened as the workspace. iwe must always be
+# invoked with CWD at the repo root (it does not search upward for .iwe/, nor
+# does it accept a --root flag); this path is what lets document keys stay
+# short (e.g. docs/knowledge/data/plans/mvp) instead of docs/knowledge/docs/knowledge/data/plans/mvp.
+path = "docs/knowledge"
+date_format = "%Y-%m-%d"
+frontmatter_document_title = "title"
+
+[search]
+language = "english"
+
+[completion]
+
+[templates.default]
+key_template = "{{slug}}"
+document_template = """
+# {{title}}
+
+{{content}}"""
+
+[actions.extract]
+type = "extract"
+title = "Extract"
+link_type = "markdown"
+key_template = "{{id}}"
+
+[actions.link]
+type = "link"
+title = "Link"
+link_type = "markdown"
+key_template = "{{id}}"
+
+[actions.inline_section]
+type = "inline"
+title = "Inline section"
+inline_type = "section"
+keep_target = false
+
+[actions.sort]
+type = "sort"
+title = "Sort A-Z"
+reverse = false
+
+# Document-schema bindings. Each entry names a schema file in .iwe/schemas/<name>.yaml
+# and a key-glob that binds it. Bindings are BY PATH, not by frontmatter fields,
+# and are relative to [workspace].path above (docs/knowledge), not to the repo
+# root or to .iwe/ itself. The extension-less hub keys (data/plans, data/bugs,
+# ...) match none of the directory globs; [schemas.hub] binds them by name.
+# Run: iwe schema validate  (--explain shows the binding trace).
+
+[schemas.plan]
+match = "data/plans/**"
+
+[schemas.feature]
+match = "data/features/**"
+
+[schemas.bug]
+match = "data/bugs/**"
+
+[schemas.release]
+match = "data/releases/**"
+
+[schemas.task]
+match = "data/backlog/**"
+
+[schemas.spec]
+match = "data/spec/**"
+
+[schemas.architecture]
+match = "data/architecture/**"
+
+[schemas.concept]
+match = "data/concept/**"
+
+[schemas.someday]
+match = "data/someday/**"
+
+# Directory hubs are typed and validated like every other document.
+[schemas.hub]
+match = [
+  "data/architecture",
+  "data/backlog",
+  "data/bugs",
+  "data/concept",
+  "data/features",
+  "data/plans",
+  "data/releases",
+  "data/someday",
+  "data/spec",
+]
+
+[schemas.tracker]
+match = ["data/product", "data/milestone"]
+
+# OKF v0.2 conformance (SPEC §11), except the `status` field: `stage` records the
+# lifecycle (docs/knowledge/SCHEMA.md). okf stacks on the per-type schemas; the
+# reserved index and log files take body schemas of their own.
+[schemas.okf]
+match = ["data/**", "!data/index", "!data/**/index", "!data/log", "!data/**/log"]
+
+[schemas.okf-index]
+match = ["data/index", "data/**/index"]
+
+[schemas.okf-log]
+match = ["data/log", "data/**/log"]
