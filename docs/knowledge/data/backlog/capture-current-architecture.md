@@ -1,13 +1,13 @@
 ---
 type: task
 description: 'Write the first data/architecture/ documents: the module layout, the core data structures, and the design decisions already baked into the code.'
-stage: pending
+stage: done
 priority: medium
 created: 2026-08-01
 generated:
   by: human:author
   at: 2026-08-01T00:00:00Z
-rank: 200
+completed: 2026-11-07
 ---
 
 # Capture the current architecture
