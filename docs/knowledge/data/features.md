@@ -14,3 +14,9 @@ deprecation, listed in one list sorted by slug. The lifecycle stage lives in
 each document's frontmatter, so the list stays flat. Stages and body sections
 are defined under Features in `SCHEMA.md` and enforced by
 `.iwe/schemas/feature.yaml`.*
+
+[Remote Control autostart on Coder](features/coder-remote-control-autostart.md)
+
+[Docker storage limits](features/docker-storage-limits.md)
+
+[OpenCode web UI autostart on Coder](features/opencode-web-coder-autostart.md)
