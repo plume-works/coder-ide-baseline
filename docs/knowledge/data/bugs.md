@@ -12,3 +12,6 @@ generated:
 *One document per bug in `bugs/<slug>.md`, listed here whether open or closed.
 Its title, body sections, and stages are defined under Bugs in `SCHEMA.md` and
 enforced by `.iwe/schemas/bug.yaml`.*
+
+[Bug: Coder workspace Dev Container is lost on
+restart](bugs/coder-devcontainer-lost-on-restart.md)
