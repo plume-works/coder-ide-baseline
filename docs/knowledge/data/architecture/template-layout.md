@@ -56,5 +56,4 @@ Everything that must run inside the Dev Container with the agent's environment
 runs as a `coder_script` on that sub-agent: `agent_start` runs the
 `agent_start_script` command, and the OpenCode `coder_app` targets the same
 sub-agent. Start scripts never wait for the Dev Container in the foreground,
-because the agent starts it only after every start script exits; `second_repo`
-detaches a worker that polls `devcontainer exec` instead.
+because the agent starts it only after every start script exits.

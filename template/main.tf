@@ -44,14 +44,6 @@ locals {
   repo_dir  = replace(replace(data.coder_parameter.repo.value, "/^.*[\\/:]/", ""), "/\\.git$/", "")
   repo_path = "${local.home_dir}/${local.repo_dir}"
 
-  # The second clone is a sibling of the first inside the Dev Container, which
-  # mounts the first at /workspaces/<name>.
-  second_repo_dir  = replace(replace(data.coder_parameter.second_repo.value, "/^.*[\\/:]/", ""), "/\\.git$/", "")
-  second_repo_path = "/workspaces/${local.second_repo_dir}"
-
-  # Without the first repository there is no Dev Container to clone into.
-  second_repo_enabled = data.coder_parameter.second_repo.value != "" && data.coder_parameter.repo.value != ""
-
   # systemd hands units its own PATH rather than the image's, so the directories
   # the image adds -- Node, the devcontainer CLI, pipx -- are named again here.
   agent_unit = <<-EOT
@@ -90,15 +82,6 @@ data "coder_parameter" "repo" {
   type         = "string"
   mutable      = true
   default      = "https://github.com/plume-works/agent-devcontainer.git"
-}
-
-data "coder_parameter" "second_repo" {
-  name         = "second_repo"
-  display_name = "Second repository URL"
-  description  = "Optional second repository, cloned inside the Dev Container at /workspaces/<name> as a sibling of the first. Ignored when Repository URL is empty."
-  type         = "string"
-  mutable      = true
-  default      = ""
 }
 
 data "coder_parameter" "agent_start_script" {
@@ -163,14 +146,6 @@ resource "coder_agent" "dev" {
       git config --global --get-all safe.directory 2>/dev/null |
         grep -qx "${local.repo_path}" ||
         git config --global --add safe.directory "${local.repo_path}"
-
-      # A Dev Container running as root leaves root-owned files in the checkout,
-      # which the pull below, running as ${local.username}, cannot overwrite.
-      if [ -d "${local.repo_path}" ]; then
-        sudo -n find "${local.repo_path}" \( ! -user ${local.username} -o ! -group ${local.username} \) \
-          -exec chown -h ${local.username}:${local.username} {} + ||
-          echo "WARNING: could not restore ownership of ${local.repo_path}"
-      fi
 
       echo "Pulling the repository's current branch before starting the Dev Container"
       timeout 30s git -C "${local.repo_path}" pull --ff-only ||
@@ -272,55 +247,6 @@ resource "coder_script" "agent_start" {
       if [ -f "$legacy" ] && [ -x "$legacy" ]; then exec "./$legacy"; fi
     fi
     echo "This repository ships no agent-start command."
-  EOT
-}
-
-# The agent starts declared Dev Containers only after every start script exits,
-# so waiting here must be detached or it deadlocks. Polling `devcontainer exec`
-# cannot race the agent's `devcontainer up`: it only attaches to a live container.
-resource "coder_script" "second_repo" {
-  count              = local.second_repo_enabled ? data.coder_workspace.me.start_count : 0
-  agent_id           = coder_agent.dev.id
-  display_name       = "Clone second repository"
-  icon               = "/icon/git.svg"
-  run_on_start       = true
-  start_blocks_login = false
-  script             = <<-EOT
-    set -euo pipefail
-
-    LOG=/tmp/coder-second-repo.log
-    WORKER=/tmp/coder-second-repo.sh
-
-    # The worker runs from a file with stdin closed: fed on stdin instead, the
-    # `devcontainer exec` below would consume the rest of it as its own input.
-    cat >"$WORKER" <<'SCRIPT'
-    folder=$1
-    target=$2
-    url=$3
-
-    # A first Dev Container build pulls and builds everything the image needs;
-    # for a large image that runs well past twenty minutes, so allow an hour.
-    deadline=$(( $(date +%s) + 3600 ))
-    until devcontainer exec --workspace-folder "$folder" -- true >/dev/null 2>&1; do
-      if [ "$(date +%s)" -ge "$deadline" ]; then
-        echo "WARNING: the Dev Container did not come up within an hour; $target was not cloned"
-        exit 0
-      fi
-      sleep 5
-    done
-
-    echo "Cloning $url into $target"
-    devcontainer exec --workspace-folder "$folder" -- bash -c '
-      if [ -e "$1" ]; then
-        echo "$1 already exists; leaving it alone"
-      else
-        git clone "$2" "$1"
-      fi
-    ' _ "$target" "$url"
-    SCRIPT
-
-    echo "Waiting for the Dev Container in the background; progress in $LOG"
-    setsid bash "$WORKER" "${local.repo_path}" "${local.second_repo_path}" "${data.coder_parameter.second_repo.value}" >"$LOG" 2>&1 </dev/null &
   EOT
 }
 

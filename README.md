@@ -94,13 +94,6 @@ coder ssh <workspace>.repo
 
 Clearing `repo` gives a plain workspace with no Dev Container.
 
-`second_repo` clones a second repository *inside* that Dev Container, at
-`/workspaces/<name>` alongside the first, once the agent has brought it up. It
-is empty by default and ignored when `repo` is empty, since there is then no
-Dev Container to clone into. That path is in the Dev Container's own filesystem
-rather than on the home volume, so the second clone is recreated whenever the
-Dev Container is rebuilt.
-
 On every start, the Dev Container's sub-agent runs the repository's
 agent-start command in the checkout, so whatever it launches inherits the
 agent's environment: Coder user secrets and its git credential helper. The

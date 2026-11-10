@@ -153,9 +153,12 @@ live probe before merge SHALL be pushed as a named, inactive draft version.
 
 ### Checkout
 
-In a Coder workspace, the template is cloned beside the Dev Container repository
-at `/workspaces/coder-ide-baseline` through the `second_repo` workspace
-parameter.
+In a Coder workspace, clone the template inside the Dev Container, into the
+account's home:
+
+``` bash
+git clone https://github.com/plume-works/coder-ide-baseline ~/coder-ide-baseline
+```
 
 ### Validate
 
@@ -164,7 +167,7 @@ Terraform is not installed in the Dev Container; run it from the
 a copy:
 
 ``` bash
-cd /workspaces/coder-ide-baseline/template
+cd ~/coder-ide-baseline/template
 docker run --rm -v "$PWD":/w -w /w hashicorp/terraform:1.13.5 fmt -check -diff
 docker run --rm -v "$PWD":/src:ro --entrypoint sh hashicorp/terraform:1.13.5 -c \
   'cp -r /src /w && cd /w && terraform init -backend=false -input=false >/dev/null && terraform validate'
