@@ -50,9 +50,8 @@ adopting it elsewhere is not a goal.
 ## Stack
 
 - `template/main.tf` — the Coder template: parameters (`image`, `repo`,
-  `second_repo`, `agent_start_script`), the `coder_agent`, the
-  `coder_devcontainer` sub-agent, apps and scripts, per-workspace Docker
-  volumes, and the workspace container.
+  `agent_start_script`), the `coder_agent`, the `coder_devcontainer` sub-agent,
+  apps and scripts, per-workspace Docker volumes, and the workspace container.
 - `template/push.sh` — creates or updates the template in Coder.
 - `root-container/` — the workspace image: an Ubuntu `Dockerfile` with Docker
   Engine, containerd and systemd, `daemon.json`, and the `docker-gc` service and
