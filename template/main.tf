@@ -164,14 +164,6 @@ resource "coder_agent" "dev" {
         grep -qx "${local.repo_path}" ||
         git config --global --add safe.directory "${local.repo_path}"
 
-      # A Dev Container running as root leaves root-owned files in the checkout,
-      # which the pull below, running as ${local.username}, cannot overwrite.
-      if [ -d "${local.repo_path}" ]; then
-        sudo -n find "${local.repo_path}" \( ! -user ${local.username} -o ! -group ${local.username} \) \
-          -exec chown -h ${local.username}:${local.username} {} + ||
-          echo "WARNING: could not restore ownership of ${local.repo_path}"
-      fi
-
       echo "Pulling the repository's current branch before starting the Dev Container"
       timeout 30s git -C "${local.repo_path}" pull --ff-only ||
         echo "WARNING: branch pull failed; continuing with the existing checkout"
@@ -310,11 +302,13 @@ resource "coder_script" "second_repo" {
     done
 
     echo "Cloning $url into $target"
+    # The Dev Container's account cannot write the root-owned /workspaces, so the
+    # target directory is created for it; nothing that exists is re-owned.
     devcontainer exec --workspace-folder "$folder" -- bash -c '
       if [ -e "$1" ]; then
         echo "$1 already exists; leaving it alone"
       else
-        git clone "$2" "$1"
+        sudo -n install -d -o "$(id -u)" -g "$(id -g)" "$1" && git clone "$2" "$1"
       fi
     ' _ "$target" "$url"
     SCRIPT
