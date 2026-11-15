@@ -81,7 +81,7 @@ RUN userdel -r ubuntu && \
 # PATH does not name a Node version.
 ENV NVM_DIR=/opt/nvm
 # renovate: datasource=github-tags depName=nvm-sh/nvm
-ARG NVM_VERSION=v0.40.8
+ARG NVM_VERSION=v0.41.0
 # renovate: datasource=npm depName=@devcontainers/cli
 ARG DEVCONTAINERS_CLI_VERSION=0.90.0
 RUN mkdir -p "$NVM_DIR" && \
